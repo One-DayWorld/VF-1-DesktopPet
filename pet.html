@@ -1,0 +1,2025 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 180px; height: 350px; overflow: hidden; background: transparent; user-select: none; }
+
+  #pet-container {
+    width: 180px;
+    height: 350px;     /* 320 canvas + 30 给推进器尾焰超出区域 (维修甲板已停用) */
+    position: relative;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Canvas area ────────────────────────────────────────── */
+  #canvas-area {
+    position: relative;
+    width: 180px;
+    height: 320px;
+    flex-shrink: 0;
+  }
+
+  #pet-canvas {
+    width: 180px;
+    height: 320px;
+    display: block;
+  }
+
+  /* ── 圆柱光柱 — 从地台向上发散的青绿色聚光, 给机体周围加光晕
+     避免黑色面板背景下机体黑色部分看不清. 默认隐藏, 跟地台一起 fade-in. */
+  #bay-spotlight {
+    position: absolute;
+    inset: 0;
+    z-index: 0;            /* 在 canvas 后面 */
+    pointer-events: none;
+    background: radial-gradient(
+      ellipse 55% 70% at 50% 82%,
+      rgba(120, 255, 200, 0.32) 0%,
+      rgba(120, 255, 200, 0.18) 18%,
+      rgba(120, 255, 200, 0.08) 42%,
+      rgba(120, 255, 200, 0.03) 65%,
+      transparent 88%
+    );
+    opacity: 0;
+    transition: opacity 0.5s ease;
+  }
+  #bay-spotlight.active { opacity: 1; }
+
+  /* ── 维修/起降甲板 (BAY) ──────────────────────────────────
+     位于机器人下方 80px 区域. 椭圆 H 圆环 + 6 颗呼吸 LED + 状态条
+     ────────────────────────────────────────────────────────── */
+  #bay-platform {
+    /* 已停用: 用户偏好不要平台. display:none 让 flex 不再为它预留 80px 空间 */
+    display: none;
+    position: relative;
+    width: 180px;
+    height: 80px;
+    flex-shrink: 0;
+    pointer-events: none;
+    margin-top: -50px;
+    z-index: 1;
+    opacity: 0;
+    transition: opacity 0.35s ease;
+  }
+  #bay-platform.active { opacity: 1; }
+  .bay-ring {
+    position: absolute;
+    left: 50%;
+    top: 28px;
+    transform: translateX(-50%);
+    width: 132px;
+    height: 32px;
+    border: 1.4px solid rgba(110, 240, 180, 0.5);
+    border-radius: 50%;
+    box-shadow:
+      0 0 14px rgba(110, 240, 180, 0.32),
+      inset 0 0 10px rgba(110, 240, 180, 0.12);
+  }
+  .bay-h {
+    position: absolute;
+    left: 50%;
+    top: 32px;
+    transform: translateX(-50%);
+    font-size: 16px;
+    font-weight: 800;
+    color: rgba(180, 255, 215, 0.85);
+    font-family: 'SF Mono', 'Menlo', monospace;
+    letter-spacing: 0.05em;
+    text-shadow: 0 0 7px rgba(110, 240, 180, 0.55);
+  }
+  .bay-leds {
+    position: absolute;
+    left: 50%;
+    top: 25px;
+    transform: translateX(-50%);
+    width: 132px;
+    height: 36px;
+    pointer-events: none;
+  }
+  .bay-led {
+    position: absolute;
+    width: 5px;
+    height: 5px;
+    background: rgba(110, 240, 180, 0.95);
+    border-radius: 50%;
+    box-shadow: 0 0 7px rgba(110, 240, 180, 0.7);
+    animation: bay-led-breathe 2.2s ease-in-out infinite;
+  }
+  /* 6 颗灯环绕椭圆 */
+  .bay-led:nth-child(1) { left: -2px;   top: 14px; animation-delay: 0s; }
+  .bay-led:nth-child(2) { left: 28%;    top: -2px; animation-delay: 0.35s; }
+  .bay-led:nth-child(3) { right: 28%;   top: -2px; animation-delay: 0.7s; }
+  .bay-led:nth-child(4) { right: -2px;  top: 14px; animation-delay: 1.05s; }
+  .bay-led:nth-child(5) { right: 28%;   bottom: -2px; animation-delay: 1.4s; }
+  .bay-led:nth-child(6) { left: 28%;    bottom: -2px; animation-delay: 1.75s; }
+  @keyframes bay-led-breathe {
+    0%, 100% { opacity: 0.45; transform: scale(0.85); }
+    50%      { opacity: 1.0;  transform: scale(1.15); }
+  }
+  /* 状态文字条 */
+  .bay-status {
+    position: absolute;
+    bottom: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 8.5px;
+    font-family: 'SF Mono', 'Menlo', monospace;
+    color: rgba(110, 240, 180, 0.7);
+    letter-spacing: 0.18em;
+    text-shadow: 0 0 4px rgba(110, 240, 180, 0.4);
+    white-space: nowrap;
+  }
+
+  /* ── Speech bubble ────────────────────────────────────────── */
+  #speech-bubble {
+    position: absolute;
+    top: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(8, 12, 28, 0.95);
+    border: 1px solid rgba(255, 208, 0, 0.7);
+    border-radius: 8px;
+    padding: 5px 10px;
+    font-size: 11px;
+    color: #FFE866;
+    white-space: nowrap;
+    max-width: 162px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: 0 0 10px rgba(255, 200, 0, 0.15), 0 2px 8px rgba(0,0,0,0.6);
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+    font-family: -apple-system, monospace, sans-serif;
+    letter-spacing: 0.3px;
+    z-index: 20;
+  }
+  #speech-bubble::after {
+    content: '';
+    position: absolute;
+    bottom: -5px;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: rgba(255, 208, 0, 0.7);
+    border-bottom: none;
+  }
+  #speech-bubble.visible { opacity: 1; }
+
+
+  /* ── 双枪口开火 muzzle flash (Battloid 形态时启用) ────── */
+  .muzzle-flash {
+    position: absolute;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 7;
+    background: radial-gradient(circle,
+      rgba(255, 240, 180, 1) 0%,
+      rgba(255, 180, 60, 0.85) 25%,
+      rgba(255, 100, 30, 0.5) 55%,
+      rgba(255, 60, 20, 0.15) 80%,
+      transparent 100%);
+    filter: blur(2px);
+    mix-blend-mode: screen;
+    opacity: 0;
+    display: none;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  /* 位置 — Battloid 双手枪口 (用户可调整这两个数值对齐实际枪口) */
+  #muzzle-l { left: 38px;  top: 165px; }
+  #muzzle-r { left: 142px; top: 165px; }
+  @keyframes muzzle-burst {
+    0%   { opacity: 0;   transform: translate(-50%, -50%) scale(0.4); }
+    8%   { opacity: 1;   transform: translate(-50%, -50%) scale(1.6); }
+    18%  { opacity: 0.5; transform: translate(-50%, -50%) scale(1.2); }
+    24%  { opacity: 0;   transform: translate(-50%, -50%) scale(0.6); }
+    32%  { opacity: 0; }
+    40%  { opacity: 1;   transform: translate(-50%, -50%) scale(1.7); }
+    50%  { opacity: 0.4; }
+    58%  { opacity: 0; }
+    100% { opacity: 0; }
+  }
+  .muzzle-flash.firing {
+    display: block;
+    animation: muzzle-burst 0.95s infinite;
+  }
+  /* 右枪口稍微错开节奏, 看起来不像同步触发 */
+  #muzzle-r.firing { animation-delay: 0.2s; }
+
+  /* ── 推进器尾焰 — Gerwalk 形态垂直巡航时点亮 ────────── */
+  /* 两条蓝白冷焰从机体脚底向下喷, scale + 抖动模拟燃烧 */
+  .thruster {
+    position: absolute;
+    width: 14px;
+    height: 96px;
+    border-radius: 50% / 32%;
+    pointer-events: none;
+    z-index: 6;
+    background: linear-gradient(180deg,
+      rgba(220, 250, 255, 1)   0%,
+      rgba(150, 220, 255, 0.9) 18%,
+      rgba(90,  170, 255, 0.7) 45%,
+      rgba(60,  120, 220, 0.35) 72%,
+      rgba(40,   80, 180, 0.12) 90%,
+      transparent 100%);
+    filter: blur(2.5px);
+    mix-blend-mode: screen;
+    transform-origin: top center;
+    opacity: 0;
+    display: none;
+  }
+  /* 位置 — Gerwalk 形态双脚正下方; 数字根据视觉对齐微调 */
+  #thruster-l { left: 52px;  top: 248px; }
+  #thruster-r { left: 110px; top: 248px; }
+  @keyframes thruster-burn {
+    0%   { transform: scaleY(1.00) translateX(0);    opacity: 0.92; }
+    20%  { transform: scaleY(1.18) translateX(-1px); opacity: 1;    }
+    40%  { transform: scaleY(0.86) translateX(1px);  opacity: 0.84; }
+    60%  { transform: scaleY(1.10) translateX(0);    opacity: 1;    }
+    80%  { transform: scaleY(0.94) translateX(-1px); opacity: 0.92; }
+    100% { transform: scaleY(1.00) translateX(0);    opacity: 0.95; }
+  }
+  .thruster.burning {
+    display: block;
+    animation: thruster-burn 0.18s linear infinite;
+  }
+  #thruster-r.burning { animation-delay: 0.06s; }
+
+  /* ── Fighter 尾焰 — 横向巡航时点亮, 黄色暖焰 ─── */
+  .tail-thruster {
+    position: absolute;
+    width: 120px;            /* 1.5x 加长 (80 → 120) */
+    height: 18px;            /* 加高到 18, 给 scaleY 抖动留可视空间 */
+    border-radius: 32% / 50%;
+    pointer-events: none;
+    z-index: 6;
+    mix-blend-mode: screen;
+    opacity: 0;
+    display: none;
+    /* 初始 filter, 关键帧里会覆盖 (blur + brightness 一起变化模拟灼烧) */
+    filter: blur(2.5px);
+  }
+  /* 朝右飞: 机头朝右 → 尾部在左 → 火焰从机体左侧再向左拖出
+     top 对准 Fighter 形态的引擎喷口高度 (机腹下方, 不要叠在武器/上翼上)
+     left 让火焰整体后移, 火焰右端 ≈ 引擎喷口, 不与机身重叠 */
+  #tail-thruster-r {
+    left: -40px; top: 174px;
+    background: linear-gradient(270deg,
+      rgba(255, 250, 200, 1)   0%,
+      rgba(255, 220, 100, 0.95) 18%,
+      rgba(255, 180, 50, 0.75) 45%,
+      rgba(255, 130, 30, 0.4)  72%,
+      rgba(255,  90, 20, 0.15) 88%,
+      transparent 100%);
+    transform-origin: right center;
+  }
+  /* 朝左飞: 机头朝左 → 尾部在右 → 火焰从机体右侧再向右拖出 (火焰左端 ≈ 引擎喷口) */
+  #tail-thruster-l {
+    left: 100px; top: 174px;
+    background: linear-gradient(90deg,
+      rgba(255, 250, 200, 1)   0%,
+      rgba(255, 220, 100, 0.95) 18%,
+      rgba(255, 180, 50, 0.75) 45%,
+      rgba(255, 130, 30, 0.4)  72%,
+      rgba(255,  90, 20, 0.15) 88%,
+      transparent 100%);
+    transform-origin: left center;
+  }
+  /* 比 vertical thruster 更激烈的 flicker:
+     长度 (scaleX) + 厚度 (scaleY) + 亮度 (brightness) + 模糊 (blur) + 透明度
+     5 维同时跳动, 看起来像真的在灼烧. translateY 轻微上下抖让尾焰"颤" */
+  @keyframes tail-burn {
+    0%   { transform: scaleX(1.00) scaleY(1.00) translateY(0);    opacity: 0.85; filter: blur(2.6px) brightness(1.00); }
+    14%  { transform: scaleX(1.24) scaleY(1.22) translateY(-1px); opacity: 1.00; filter: blur(2.0px) brightness(1.40); }
+    28%  { transform: scaleX(0.78) scaleY(0.82) translateY(1px);  opacity: 0.72; filter: blur(3.4px) brightness(0.85); }
+    42%  { transform: scaleX(1.18) scaleY(1.14) translateY(-1px); opacity: 1.00; filter: blur(2.2px) brightness(1.30); }
+    56%  { transform: scaleX(0.92) scaleY(0.92) translateY(0);    opacity: 0.86; filter: blur(2.8px) brightness(0.95); }
+    72%  { transform: scaleX(1.12) scaleY(1.08) translateY(-1px); opacity: 0.96; filter: blur(2.2px) brightness(1.20); }
+    86%  { transform: scaleX(0.95) scaleY(0.96) translateY(1px);  opacity: 0.88; filter: blur(2.7px) brightness(1.00); }
+    100% { transform: scaleX(1.00) scaleY(1.00) translateY(0);    opacity: 0.90; filter: blur(2.5px) brightness(1.05); }
+  }
+  .tail-thruster.burning {
+    display: block;
+    animation: tail-burn 0.14s linear infinite;
+  }
+  /* 左右尾焰错开节奏, 不像同步 */
+  #tail-thruster-l.burning { animation-delay: 0.05s; }
+
+  /* ── 休息提醒醒目模式: 青色脉动光晕 ────────────────────── */
+  #break-aura {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 7;
+    opacity: 0;
+    transition: opacity 0.35s ease;
+    border-radius: 14px;
+  }
+  #break-aura.active { opacity: 1; }
+  #break-aura::before {
+    content: '';
+    position: absolute;
+    inset: 4px;
+    border-radius: 50%;
+    border: 2px solid rgba(120, 230, 255, 0.85);
+    box-shadow:
+      0 0 24px rgba(120, 230, 255, 0.85),
+      inset 0 0 24px rgba(120, 230, 255, 0.45);
+    animation: break-pulse 1.4s ease-in-out infinite;
+  }
+  /* 第二层旋转扫光圈 — 让"传送中央"感更强 */
+  #break-aura::after {
+    content: '';
+    position: absolute;
+    inset: 12px;
+    border-radius: 50%;
+    border-top: 2px solid rgba(180, 250, 255, 0.95);
+    border-right: 2px solid rgba(180, 250, 255, 0.4);
+    border-bottom: 2px solid transparent;
+    border-left: 2px solid transparent;
+    animation: break-rotate 2s linear infinite;
+  }
+  @keyframes break-pulse {
+    0%, 100% { transform: scale(1);    opacity: 0.78; }
+    50%      { transform: scale(1.06); opacity: 1.0;  }
+  }
+  @keyframes break-rotate {
+    to { transform: rotate(360deg); }
+  }
+  /* 醒目模式下气泡用更亮的青色, 配合主题 */
+  #speech-bubble.break {
+    background: rgba(8, 32, 48, 0.96);
+    border-color: rgba(120, 230, 255, 0.9);
+    color: #B0EEFF;
+    box-shadow: 0 0 14px rgba(120, 230, 255, 0.55);
+  }
+  #speech-bubble.break::after { border-top-color: rgba(120, 230, 255, 0.9); }
+
+  /* ── Loading ────────────────────────────────────────── */
+  #loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: rgba(255, 208, 0, 0.8);
+    font-size: 10px;
+    font-family: monospace;
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  /* ── Radar Sweep HUD: 静态扫描盘 + 旋转扫描线 + 同心声呐 + 底部状态字 ──
+     扎古单眼"搜索目标"的雷达视觉.
+     .alert 高优: 金色 conic 扫描线 2s 一圈 + 3 圈错位扩散声呐 + [INCOMING] 闪烁
+     .ax-missing 中优: 暖橘静态扫描盘, 不旋转, 标 [SCAN OFFLINE]
+  */
+  #alert-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 8;
+    opacity: 0;
+    transition: opacity 0.18s;
+  }
+  #alert-overlay.alert,
+  #alert-overlay.ax-missing,
+  #alert-overlay.target-locked { opacity: 1; }
+
+  /* ── HUD 琥珀金四角锁定 (任务完成: target-locked) ─────────────────
+     4 个 L 角标 (4px 粗描边, 双层 drop-shadow 浮雕) 整体从 scale(1.6) 收缩到 scale(1)
+     + 持续轻微呼吸. 琥珀金 #FFB300 偏暖, 区别于 alert 的纯金 #FFD000. */
+  .hud {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 130px; height: 150px;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    opacity: 0;
+  }
+  #alert-overlay.target-locked .hud {
+    animation:
+      lock-converge 0.45s ease-out forwards,
+      lock-pulse    1.6s ease-in-out 0.45s infinite;
+  }
+  /* 4 个 L 角标 — 28×28, 4px 主体 + 内高光线 + 外投影 + 辉光, 琥珀金立体感 */
+  .hud .corner {
+    position: absolute;
+    width: 28px; height: 28px;
+    box-sizing: border-box;
+    border-color: #FFB300;
+    border-style: solid;
+    /* 三层叠加:
+       1) 内高光 (-1px -1px, 浅金): 模拟从左上方打来的光在 L 角的"上沿/左沿"反光
+       2) 外投影 ( 2px  2px, 暗棕): 让 L 角脱离背景, 像悬浮的金属片
+       3) 周围辉光 (0 0 6px, 暖橘): 维持原版琥珀晕染氛围 */
+    filter:
+      drop-shadow(-1px -1px 0 #FFE38A)
+      drop-shadow( 2px  2px 1.5px rgba(40, 18, 0, 0.7))
+      drop-shadow( 0    0 6px   rgba(255, 179, 0, 0.85));
+  }
+  /* ::before 在内侧再画一条更细更亮的平行 L, 形成"金属厚度" */
+  .hud .corner::before {
+    content: "";
+    position: absolute;
+    box-sizing: border-box;
+    border-color: rgba(255, 240, 180, 0.9);
+    border-style: solid;
+    border-width: inherit;
+    inset: 2px;
+    transform: scale(0.72);
+    transform-origin: var(--bevel-origin, 0 0);
+    pointer-events: none;
+  }
+  .hud .corner.tl { top: 0;    left: 0;     border-width: 4px 0 0 4px; --bevel-origin: 0    0;    }
+  .hud .corner.tr { top: 0;    right: 0;    border-width: 4px 4px 0 0; --bevel-origin: 100% 0;    }
+  .hud .corner.bl { bottom: 0; left: 0;     border-width: 0 0 4px 4px; --bevel-origin: 0    100%; }
+  .hud .corner.br { bottom: 0; right: 0;    border-width: 0 4px 4px 0; --bevel-origin: 100% 100%; }
+  /* 整体收缩入场: scale(1.6) → scale(1) + 渐显 */
+  @keyframes lock-converge {
+    0%   { transform: translate(-50%, -50%) scale(1.6); opacity: 0; }
+    50%  { opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(1);   opacity: 1; }
+  }
+  /* 稳态呼吸: 1.6s 周期, scale 1↔1.04 + drop-shadow 强弱 */
+  @keyframes lock-pulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1);    filter: drop-shadow(0 0 3px rgba(255, 179, 0, 0.5)); }
+    50%      { transform: translate(-50%, -50%) scale(1.04); filter: drop-shadow(0 0 8px rgba(255, 179, 0, 1));   }
+  }
+  /* target-locked 状态下不显示金色雷达元素, 避免视觉冲突 */
+  #alert-overlay.target-locked .radar-scope,
+  #alert-overlay.target-locked .radar-sweep,
+  #alert-overlay.target-locked .radar-ping { display: none; }
+  #alert-overlay.target-locked .radar-label {
+    color: #FFB300;
+    text-shadow: 0 0 6px rgba(255, 179, 0, 0.85);
+    animation: radar-label-blink 1.0s ease-in-out infinite;
+  }
+  #alert-overlay.target-locked .radar-label::before {
+    content: "[ TARGET LOCKED · INPUT REQ ]";
+  }
+
+  /* 静态扫描盘 — 雷达底盘外圈 + 内圈 + 横十字线 */
+  .radar-scope {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 170px; height: 170px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 208, 0, 0.28);
+    transform: translate(-50%, -50%);
+    box-sizing: border-box;
+  }
+  .radar-scope::before {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 50%; height: 50%;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 208, 0, 0.22);
+    transform: translate(-50%, -50%);
+  }
+  /* 横十字 — 雷达坐标网 */
+  .radar-scope::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 6%; right: 6%;
+    height: 1px;
+    background: rgba(255, 208, 0, 0.16);
+  }
+  #alert-overlay.alert .radar-scope { border-color: rgba(255, 208, 0, 0.55); }
+  #alert-overlay.alert .radar-scope::before { border-color: rgba(255, 208, 0, 0.4); }
+  #alert-overlay.alert .radar-scope::after  { background: rgba(255, 208, 0, 0.3); }
+  #alert-overlay.ax-missing .radar-scope { border-color: rgba(255, 150, 60, 0.45); }
+  #alert-overlay.ax-missing .radar-scope::before { border-color: rgba(255, 150, 60, 0.32); }
+  #alert-overlay.ax-missing .radar-scope::after  { background: rgba(255, 150, 60, 0.22); }
+
+  /* 旋转扫描线 — conic gradient 形成的扇形带尾迹, 顺时针 2s 一圈 */
+  .radar-sweep {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 170px; height: 170px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    background: conic-gradient(
+      from 0deg,
+      transparent 0deg,
+      transparent 280deg,
+      rgba(255, 208, 0, 0.10) 320deg,
+      rgba(255, 215, 70, 0.55) 355deg,
+      rgba(255, 220, 110, 0.95) 360deg
+    );
+    /* 中心挖空, 不遮扎古身体 */
+    -webkit-mask: radial-gradient(circle, transparent 12%, black 13%, black 100%);
+            mask: radial-gradient(circle, transparent 12%, black 13%, black 100%);
+  }
+  #alert-overlay.alert .radar-sweep {
+    animation: radar-rotate 2s linear infinite;
+  }
+  #alert-overlay.ax-missing .radar-sweep {
+    /* 静态暗扫描线, 不旋转 */
+    background: conic-gradient(
+      from 90deg,
+      transparent 0deg,
+      transparent 320deg,
+      rgba(255, 150, 60, 0.20) 355deg,
+      rgba(255, 165, 80, 0.45) 360deg
+    );
+  }
+  @keyframes radar-rotate {
+    to { transform: translate(-50%, -50%) rotate(360deg); }
+  }
+
+  /* 同心声呐波纹 — 3 圈错位向外扩散, 1.8s 周期 */
+  .radar-ping {
+    position: absolute;
+    top: 50%; left: 50%;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255, 208, 0, 0.7);
+    transform: translate(-50%, -50%);
+    width: 50px; height: 50px;
+    opacity: 0;
+    pointer-events: none;
+  }
+  #alert-overlay.alert .radar-ping {
+    animation: radar-ping 1.8s ease-out infinite;
+  }
+  #alert-overlay.alert .radar-ping:nth-child(1) { animation-delay: 0s; }
+  #alert-overlay.alert .radar-ping:nth-child(2) { animation-delay: 0.6s; }
+  #alert-overlay.alert .radar-ping:nth-child(3) { animation-delay: 1.2s; }
+  @keyframes radar-ping {
+    0%   { width: 50px;  height: 50px;  opacity: 0.85; border-width: 2px; }
+    100% { width: 175px; height: 175px; opacity: 0;    border-width: 0.5px; }
+  }
+
+  /* 底部状态字 */
+  .radar-label {
+    position: absolute;
+    bottom: 4px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 9px;
+    font-weight: 700;
+    font-family: 'SF Mono', 'Menlo', monospace;
+    letter-spacing: 0.18em;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  #alert-overlay.alert .radar-label {
+    color: #FFD000;
+    text-shadow: 0 0 7px rgba(255, 208, 0, 0.85);
+    animation: radar-label-blink 1.0s ease-in-out infinite;
+  }
+  #alert-overlay.alert .radar-label::before {
+    content: "[ INCOMING · INPUT REQ ]";
+  }
+  #alert-overlay.ax-missing .radar-label {
+    color: rgba(255, 165, 80, 0.85);
+    text-shadow: 0 0 4px rgba(255, 150, 60, 0.4);
+  }
+  #alert-overlay.ax-missing .radar-label::before {
+    content: "[ SCAN OFFLINE ]";
+  }
+  @keyframes radar-label-blink {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.55; }
+  }
+
+</style>
+</head>
+<body>
+<div id="pet-container">
+  <div id="bay-spotlight"></div>
+  <div id="canvas-area">
+    <canvas id="pet-canvas"></canvas>
+    <div id="alert-overlay">
+      <div class="radar-scope"></div>
+      <div class="radar-sweep"></div>
+      <div class="radar-ping"></div>
+      <div class="radar-ping"></div>
+      <div class="radar-ping"></div>
+      <div class="hud">
+        <span class="corner tl"></span>
+        <span class="corner tr"></span>
+        <span class="corner bl"></span>
+        <span class="corner br"></span>
+      </div>
+      <div class="radar-label"></div>
+    </div>
+    <div id="break-aura"></div>
+    <div class="muzzle-flash" id="muzzle-l"></div>
+    <div class="muzzle-flash" id="muzzle-r"></div>
+    <div class="thruster" id="thruster-l"></div>
+    <div class="thruster" id="thruster-r"></div>
+    <div class="tail-thruster" id="tail-thruster-l"></div>
+    <div class="tail-thruster" id="tail-thruster-r"></div>
+    <div id="speech-bubble"></div>
+    <div id="loading">载入中…</div>
+  </div>
+  <!-- 维修/起降甲板 — 机器人下方的停机平台 -->
+  <div id="bay-platform">
+    <div class="bay-ring"></div>
+    <div class="bay-leds">
+      <div class="bay-led"></div>
+      <div class="bay-led"></div>
+      <div class="bay-led"></div>
+      <div class="bay-led"></div>
+      <div class="bay-led"></div>
+      <div class="bay-led"></div>
+    </div>
+    <div class="bay-h">H</div>
+    <div class="bay-status" id="bay-status">BAY-01 · STANDBY</div>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from './node_modules/three/build/three.module.js';
+import { GLTFLoader } from './assets/GLTFLoader.js';
+
+// ── Renderer / Scene / Camera ──────────────────────────────────────────
+const canvas = document.getElementById('pet-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio || 1);
+renderer.setSize(180, 320);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = false;
+renderer.setClearColor(0x000000, 0);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, 180 / 320, 0.01, 1000);
+
+// ── Lights ────────────────────────────────────────────────────────────
+const ambient = new THREE.AmbientLight(0xffffff, 1.2);
+scene.add(ambient);
+
+const keyLight = new THREE.DirectionalLight(0xFFEECC, 2.2);
+keyLight.position.set(3, 6, 5);
+scene.add(keyLight);
+
+const rimLight = new THREE.DirectionalLight(0x334466, 0.8);
+rimLight.position.set(-4, 2, -3);
+scene.add(rimLight);
+
+const fillLight = new THREE.DirectionalLight(0xCCDDFF, 0.5);
+fillLight.position.set(0, -3, 4);
+scene.add(fillLight);
+
+// Eye glow light — red by default, turns yellow when TERM needs confirmation
+const eyeLight = new THREE.PointLight(0xFF2200, 3.0, 8);
+let termAlertActive = false;
+// 任务完成 (Stop hook 写 /tmp/zaku_task_done) 后, main 广播 taskDoneAvailable=true.
+// 此时单击宠物会跳转到对应 terminal 而不是变形, 跳完由 main 广播 false 清掉.
+let taskDoneAvailable = false;
+
+// ── 上升扫频警告音 (Macross / 星际牛仔风) ─────────────────────────────
+// Web Audio 合成: 锯齿波 400→1400Hz, 700ms 一轮上扫, 800ms 间隔。
+// 挂在 termAlertActive 状态切换上, 进入 true 起循环, false 立停。
+// 受 alertSoundEnabled 开关控制, 关闭时静音 (但视觉警报照常)。
+let _audioCtx = null;
+let _alertBeepTimer = null;
+let _alertMasterGain = null;
+let _alertSoundEnabled = true; // 由 store 初始值 + IPC 广播刷新
+function _ensureAudio() {
+  if (_audioCtx) return _audioCtx;
+  const Ctor = window.AudioContext || window.webkitAudioContext;
+  if (!Ctor) return null;
+  _audioCtx = new Ctor();
+  _alertMasterGain = _audioCtx.createGain();
+  _alertMasterGain.gain.value = 0.18; // 中等音量
+  _alertMasterGain.connect(_audioCtx.destination);
+  return _audioCtx;
+}
+function _scheduleBeep() {
+  const ctx = _audioCtx;
+  if (!ctx) return;
+  const t0 = ctx.currentTime;
+  const dur = 0.7;
+  const peak = 0.6; // 单声峰值, 与试听页一致
+  const osc = ctx.createOscillator();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(400, t0);
+  osc.frequency.linearRampToValueAtTime(1400, t0 + dur);
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(0.0001, t0);
+  env.gain.exponentialRampToValueAtTime(peak, t0 + 0.05);
+  env.gain.setValueAtTime(peak, t0 + dur - 0.1);
+  env.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  osc.connect(env).connect(_alertMasterGain);
+  osc.start(t0);
+  osc.stop(t0 + dur + 0.02);
+}
+function startAlertSound() {
+  if (!_alertSoundEnabled) return; // 用户关了警报音, 仅视觉提示
+  const ctx = _ensureAudio();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+  if (_alertBeepTimer) return; // 已经在响
+  _scheduleBeep();              // 立刻先响一声
+  _alertBeepTimer = setInterval(_scheduleBeep, 800);
+}
+function stopAlertSound() {
+  if (_alertBeepTimer) {
+    clearInterval(_alertBeepTimer);
+    _alertBeepTimer = null;
+  }
+}
+
+// ── 变形音效: 厚重金属冲击 (4 层物理叠加) ──────────────────────────
+// 之前所有版本听起来塑料的根因: 缺低频! 塑料 vs 金属的物理差异是金属被
+// 敲击会激发结构低频共振("咣"60-200Hz), 塑料不会. 之前为避开"放屁区"
+// 把能量全压在中高频 → 塑料化. 关键: 用 sine + 40ms 短包络去做低频冲击,
+// 而不是锯齿 + 持续 buzz, 就不会放屁.
+//
+// 4 层结构 (同时启动):
+//   层1 sine 200→60Hz (40ms)         "咣"   重量感
+//   层2 12ms 宽带噪声 100Hz-6kHz     "咔"   实体冲击瞬态
+//   层3 380/560/720Hz Q=10 (80-130ms) "嗡"   金属物质延音
+//   层4 1.5-4kHz Q=12 (35-60ms)      "嚓"   清脆泛音
+
+function _heavyMetalImpact(ctx, sfxOut, t, intensity) {
+  // ── 层 1: 低频冲击 sine 200→60Hz "咣" — 厚重感的根基
+  //    sine + 40ms 短衰减包络, 不会变成 buzz/放屁
+  const low = ctx.createOscillator();
+  low.type = 'sine';
+  low.frequency.setValueAtTime(200, t);
+  low.frequency.exponentialRampToValueAtTime(60, t + 0.04);
+  const lowG = ctx.createGain();
+  lowG.gain.setValueAtTime(0.0001, t);
+  lowG.gain.exponentialRampToValueAtTime(intensity * 0.85, t + 0.002);
+  lowG.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+  low.connect(lowG).connect(sfxOut);
+  low.start(t);
+  low.stop(t + 0.07);
+
+  // ── 层 2: 宽带冲击瞬态 12ms 衰减噪声 100Hz-6kHz "咔" — 实体硬度
+  const impactDur = 0.012;
+  const impactLen = Math.floor(ctx.sampleRate * impactDur);
+  const impactBuf = ctx.createBuffer(1, impactLen, ctx.sampleRate);
+  const ic = impactBuf.getChannelData(0);
+  for (let j = 0; j < impactLen; j++) {
+    const k = j / impactLen;
+    ic[j] = (Math.random() * 2 - 1) * Math.exp(-k * 6);
+  }
+  const impSrc = ctx.createBufferSource();
+  impSrc.buffer = impactBuf;
+  const impHp = ctx.createBiquadFilter();
+  impHp.type = 'highpass';
+  impHp.frequency.value = 100;  // 比之前 300 更低, 保留低频实体感
+  const impLp = ctx.createBiquadFilter();
+  impLp.type = 'lowpass';
+  impLp.frequency.value = 6000;
+  const impG = ctx.createGain();
+  impG.gain.value = intensity * 0.7;
+  impSrc.connect(impHp).connect(impLp).connect(impG).connect(sfxOut);
+  impSrc.start(t);
+  impSrc.stop(t + impactDur + 0.005);
+
+  // ── 共激发 10ms 噪声 (供层 3 + 层 4 的所有 BP 滤波器)
+  const exciteDur = 0.01;
+  const exciteLen = Math.floor(ctx.sampleRate * exciteDur);
+  const exciteBuf = ctx.createBuffer(1, exciteLen, ctx.sampleRate);
+  const ec = exciteBuf.getChannelData(0);
+  for (let j = 0; j < exciteLen; j++) ec[j] = Math.random() * 2 - 1;
+  const exciteSrc = ctx.createBufferSource();
+  exciteSrc.buffer = exciteBuf;
+
+  // ── 层 3: 中频实体共振 380/560/720Hz Q=10 "嗡" — 金属物质延音
+  //    这是"实心金属体"和"空心塑料"的关键区别 — 中频要有 100ms 量级的延音
+  const subResos  = [380, 560, 720];
+  const subDecays = [0.13, 0.10, 0.08];
+  const subGains  = [1.00, 0.70, 0.50];
+  for (let i = 0; i < subResos.length; i++) {
+    const f = subResos[i] * (1 + (Math.random() - 0.5) * 0.04);
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = f;
+    bp.Q.value = 10;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(intensity * subGains[i] * 0.42, t + 0.001);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + subDecays[i]);
+    exciteSrc.connect(bp).connect(env).connect(sfxOut);
+  }
+
+  // ── 层 4: 高频金属泛音 1.5/2.2/3.1/4.0kHz Q=12 "嚓" — 清脆瞬态
+  const hiResos  = [1500, 2200, 3100, 4000];
+  const hiDecays = [0.060, 0.050, 0.040, 0.035];
+  const hiGains  = [0.80,  0.60,  0.40,  0.30];
+  for (let i = 0; i < hiResos.length; i++) {
+    const f = hiResos[i] * (1 + (Math.random() - 0.5) * 0.05);
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = f;
+    bp.Q.value = 12;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(intensity * hiGains[i] * 0.32, t + 0.001);
+    env.gain.exponentialRampToValueAtTime(0.0001, t + hiDecays[i]);
+    exciteSrc.connect(bp).connect(env).connect(sfxOut);
+  }
+
+  exciteSrc.start(t);
+  exciteSrc.stop(t + exciteDur + 0.002);
+}
+
+function playTransformSfx() {
+  const ctx = _ensureAudio();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+  const t0 = ctx.currentTime;
+  // 独立输出节点, 绕过 _alertMasterGain (那个为警报音降到 0.18, 会吞掉变形音)
+  const sfxOut = ctx.createGain();
+  sfxOut.gain.value = 0.95;
+  sfxOut.connect(ctx.destination);
+
+  // 1) 主角: 厚重金属冲击序列 — "重 中 中 中 中 重" 6 次有节奏的撞击
+  //    每次都是 4 层(咣+咔+嗡+嚓), 起始重击给"开始变形"感, 末端重击是"锁定"
+  //    比 8 次均匀咔嗒更有"变形过程"叙事 (起承转合)
+  const beats = [
+    { time: 0.02, intensity: 1.40 },   // 起始重击 — 装甲首次破封
+    { time: 0.20, intensity: 0.85 },   // 过程咬合
+    { time: 0.36, intensity: 0.95 },
+    { time: 0.52, intensity: 0.85 },
+    { time: 0.68, intensity: 1.00 },
+    // 末端重击 1.6 在下面单独触发 (与 ping 同步)
+  ];
+  beats.forEach(b => {
+    _heavyMetalImpact(ctx, sfxOut, t0 + b.time + Math.random() * 0.018, b.intensity);
+  });
+
+  // 2) 伺服底色: 方波 + 三角波, 经过宽带通(基础) + 窄带共振(金属嗡鸣) 双路并联
+  //    1850Hz Q=18 共振峰让伺服声里也有金属共鸣, 不是纯电气方波感
+  const ws = t0 + 0.05;
+  const we = t0 + 0.88;
+  const servoMid = t0 + 0.45;
+
+  const servo1 = ctx.createOscillator();
+  servo1.type = 'square';
+  servo1.frequency.setValueAtTime(550, ws);
+  servo1.frequency.exponentialRampToValueAtTime(400, servoMid);
+  servo1.frequency.exponentialRampToValueAtTime(650, we);
+
+  const servo2 = ctx.createOscillator();
+  servo2.type = 'triangle';
+  servo2.frequency.setValueAtTime(820, ws);
+  servo2.frequency.exponentialRampToValueAtTime(600, servoMid);
+  servo2.frequency.exponentialRampToValueAtTime(970, we);
+
+  // servo bus — 让两个 osc 都喂到双路 (宽通基础 + 窄通共振)
+  const servoBus = ctx.createGain();
+  servoBus.gain.value = 1;
+  servo1.connect(servoBus);
+  const s2g = ctx.createGain();
+  s2g.gain.value = 0.5;
+  servo2.connect(s2g).connect(servoBus);
+
+  // 路径 A: 宽通 (Q=0.6) — 保留基波 + 谐波, 给"机械"感
+  const wide = ctx.createBiquadFilter();
+  wide.type = 'bandpass';
+  wide.frequency.value = 1100;
+  wide.Q.value = 0.6;
+
+  // 路径 B: 窄通 (Q=18) — 1850Hz 强共振峰, 给"金属嗡鸣"
+  const reso = ctx.createBiquadFilter();
+  reso.type = 'bandpass';
+  reso.frequency.value = 1850;
+  reso.Q.value = 18;
+  const resoGain = ctx.createGain();
+  resoGain.gain.value = 0.55;
+
+  const sg = ctx.createGain();
+  sg.gain.setValueAtTime(0.0001, ws);
+  sg.gain.exponentialRampToValueAtTime(0.05, ws + 0.07);
+  sg.gain.setValueAtTime(0.05, we - 0.12);
+  sg.gain.exponentialRampToValueAtTime(0.0001, we);
+
+  servoBus.connect(wide).connect(sg);
+  servoBus.connect(reso).connect(resoGain).connect(sg);
+  sg.connect(sfxOut);
+  servo1.start(ws); servo1.stop(we + 0.02);
+  servo2.start(ws); servo2.stop(we + 0.02);
+
+  // 2.5) 低频背景嗡 75→60→85Hz sine — 让伺服过程中也有"重型机器"低频根基
+  //      sine + 极弱音量(0.04), 不会形成 buzz, 但能补足整体的"重量感"
+  const lowHum = ctx.createOscillator();
+  lowHum.type = 'sine';
+  lowHum.frequency.setValueAtTime(75, ws);
+  lowHum.frequency.exponentialRampToValueAtTime(60, servoMid);
+  lowHum.frequency.exponentialRampToValueAtTime(85, we);
+  const humG = ctx.createGain();
+  humG.gain.setValueAtTime(0.0001, ws);
+  humG.gain.exponentialRampToValueAtTime(0.04, ws + 0.12);
+  humG.gain.setValueAtTime(0.04, we - 0.18);
+  humG.gain.exponentialRampToValueAtTime(0.0001, we);
+  lowHum.connect(humG).connect(sfxOut);
+  lowHum.start(ws);
+  lowHum.stop(we + 0.02);
+
+  // 3) 末端锁定: 最重的冲击 (intensity 1.6) — 装甲完全锁死的"咣咔嗡——"
+  const ct = t0 + 0.95;
+  _heavyMetalImpact(ctx, sfxOut, ct, 1.6);
+
+  const ping = ctx.createOscillator();
+  ping.type = 'triangle';
+  ping.frequency.setValueAtTime(750, ct);
+  ping.frequency.exponentialRampToValueAtTime(480, ct + 0.13);
+  const pg = ctx.createGain();
+  pg.gain.setValueAtTime(0.0001, ct);
+  pg.gain.exponentialRampToValueAtTime(0.25, ct + 0.004);
+  pg.gain.exponentialRampToValueAtTime(0.0001, ct + 0.2);
+  ping.connect(pg).connect(sfxOut);
+  ping.start(ct);
+  ping.stop(ct + 0.22);
+}
+
+// ── 告警语音循环: 每 30 秒重念一次 (替代扫频警报音) ──
+let _alertVoiceTimer = null;
+const ALERT_VOICE_TEXT = '发现不明物体';
+function startAlertVoiceLoop() {
+  if (_alertVoiceTimer) return;            // 已经在跑
+  if (!_alertSoundEnabled) return;
+  speakZaku(ALERT_VOICE_TEXT);             // 立刻念第一遍
+  _alertVoiceTimer = setInterval(() => {
+    if (_alertSoundEnabled) speakZaku(ALERT_VOICE_TEXT);
+  }, 30000);
+}
+function stopAlertVoiceLoop() {
+  if (_alertVoiceTimer) {
+    clearInterval(_alertVoiceTimer);
+    _alertVoiceTimer = null;
+  }
+  // 取消正在念的那句, 立即静音
+  try { window.speechSynthesis.cancel(); } catch (_) {}
+}
+// 辅助功能权限缺失时的"软警告"状态: 眼睛缓慢琥珀脉冲, 区分于 term-alert 的高频金色
+let axMissingActive = false;
+// 模型自身的眼睛/单眼镜头材质 (load 后填充). 告警时直接改这些材质的 emissive
+// 才能让单眼真的"变金色高频闪烁"; 只靠外部 PointLight 染色观感太弱.
+const eyeMaterials = [];      // [{ mat, originalEmissive: Color, originalIntensity: number }]
+const GOLD_EMISSIVE = new THREE.Color(0xFFD000);
+const DARK_EMISSIVE = new THREE.Color(0x110800);
+const AMBER_EMISSIVE = new THREE.Color(0xFF8030);
+scene.add(eyeLight);
+
+// ── Model state ───────────────────────────────────────────────────────
+let modelGroup = null;
+let modelLoaded = false;
+let mixer = null;
+// 把所有 GLB 动画 clip 缓存下来, 留给触发式播放 (告警/休息提醒时变形等)
+let modelGroup_animations = [];
+let modelGroup_actions = {};
+// 变形进度: 0 = Fighter(战斗机), 0.7 ≈ Gerwalk 完全态(腿+手臂伸出, 默认待命), 1 = Battloid(完整机器人)
+// _morphProgress 是当前位置, _morphTarget 是目标. 每帧朝目标 lerp.
+let _morphProgress = 0.7;   // 默认 Gerwalk 待命 (手臂武器伸出)
+let _morphTarget = 0.7;
+let _lastSettledProgress = -1;   // 静止后, 跟踪是否已应用最终一帧, 避免重复 mixer.update
+const MORPH_SPEED = 0.32;        // 默认 progress/秒
+let _currentMorphSpeed = 0.32;   // 当前生效速度, 可通过 IPC 切换 (例如中央播报段调慢)
+
+// 机体基础 yaw — 控制"机头朝向"的静态偏角. 跟 mood 摆动 (modelGroup.rotation.y) 解耦.
+const BASE_YAW_LEFT  = Math.PI - Math.PI / 12;  // 左偏 15° (待命)
+const BASE_YAW_RIGHT = Math.PI + Math.PI / 12;  // 右偏 15°
+const BASE_YAW_FACE  = Math.PI;                 // 正对镜头 (中央播报)
+// 巡航专用: 完全侧身 90°, 让横向飞行机头精准朝飞行方向
+const BASE_YAW_PATROL_LEFT  = Math.PI - Math.PI / 2;   // = π/2,  机头朝屏幕左
+const BASE_YAW_PATROL_RIGHT = Math.PI + Math.PI / 2;   // = 3π/2, 机头朝屏幕右
+// 默认正对镜头 (而不是 LEFT 的 15° 偏转), 配合 IDLE_PITCH 让驾驶舱完整朝你
+let _baseYaw = BASE_YAW_FACE;
+let _baseYawTarget = BASE_YAW_FACE;
+const YAW_LERP_SPEED = 4.0;
+// 待机/巡航默认俯仰 — 让镜头能看到驾驶舱顶部 (≈18°)
+const IDLE_PITCH = 0.32;
+
+// ── Load GLTF model ───────────────────────────────────────────────────
+// 切换模型: SD 扎古 (轻量, 5.3k 三角) → VF-1 Super Valkyrie Strike (重, 259.9k 三角, 但带骨骼+变形动画)
+//   ./assets/zaku-sd/sd_ms-06f_zaku_ii.glb       — 旧模型
+//   ./assets/vf-1-strike/vf1.glb                 — 新模型 (Roy Focker 骷髅中队 VF-1S, 含 Gerwalk 变形动画)
+const loader = new GLTFLoader();
+loader.load(
+  './assets/vf-1-strike/vf1.glb',
+  (gltf) => {
+    document.getElementById('loading').style.display = 'none';
+
+    const model = gltf.scene;
+
+    // Compute bounding box to auto-fit model into viewport
+    const box = new THREE.Box3().setFromObject(model);
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    box.getSize(size);
+    box.getCenter(center);
+
+    // Center the model at origin
+    model.position.sub(center);
+
+    // Fit camera with correct aspect-ratio-aware calculation + padding
+    const aspect = 180 / 320;
+    const fovRad = (camera.fov * Math.PI) / 180;
+    const halfFovTan = Math.tan(fovRad / 2);
+    const distH = (size.y / 2) / halfFovTan;
+    const distW = (size.x / 2) / (halfFovTan * aspect);
+    // 留白系数: 1.0=贴边, 1.2=适中(默认), 1.75=扎古时代的留白
+    // 数字越大模型显得越小, 但 rotation/手臂伸展时不会被边框裁掉
+    const dist = Math.max(distH, distW) * 1.2;
+    camera.position.set(0, 0, dist);
+    camera.lookAt(0, 0, 0);
+    camera.near = dist * 0.01;
+    camera.far  = dist * 10;
+    camera.updateProjectionMatrix();
+
+    // Slightly tilt down so we see the face
+    model.rotation.x = -0.08;
+    // VF-1 模型默认机头朝镜头反方向; 机体基础 yaw 由 _baseYaw 动态控制 (待命/飞行/中央切换)
+    model.rotation.y = _baseYaw;
+
+    // Eye-glow light at head area
+    const headY = size.y * 0.38;
+    eyeLight.position.set(0, headY, size.z * 0.6);
+    eyeLight.distance = dist * 1.5;
+
+    modelGroup = new THREE.Group();
+    modelGroup.add(model);
+    modelGroup.userData.model = model;   // 留给 animate 循环驱动 base yaw
+    scene.add(modelGroup);
+
+    if (gltf.animations && gltf.animations.length > 0) {
+      mixer = new THREE.AnimationMixer(model);
+      console.log('[PET] available animations:', gltf.animations.map(a => `"${a.name}" (${a.duration.toFixed(1)}s)`));
+      modelGroup_animations = gltf.animations;
+      modelGroup_actions = {};
+      gltf.animations.forEach(clip => {
+        modelGroup_actions[clip.name] = mixer.clipAction(clip);
+      });
+
+      // 用 GERWALK 动画做手动驱动的变形 (time=0 → Fighter, time=duration → Gerwalk)
+      // play() + paused=true: 让 mixer 知道要应用这个 action, 但时间由我们手动设
+      const transform = modelGroup_actions['__ActionLegGERWALKgunner']
+                     || Object.values(modelGroup_actions)[0];
+      if (transform) {
+        transform.setLoop(THREE.LoopOnce);
+        transform.clampWhenFinished = true;
+        transform.play();
+        transform.paused = true;
+        transform.time = transform.getClip().duration * 0.7;  // 启动时停在 Gerwalk 完全态
+        mixer.update(0);
+        console.log('[PET] morph anchor set to Gerwalk (70%)');
+      }
+    }
+
+    // 找出"眼睛/单眼镜头"材质. 三档启发式按可信度排:
+    //  ① mesh/material 名包含 eye/visor/lens/optic 等 → 直接收
+    //  ② emissive 颜色偏红/暖 → 多半是发光的眼睛/警示灯
+    //  ③ 啥都没匹配到, fallback 到 [所有有 emissive 槽位的小材质] 用作兜底
+    // 启动时把所有 mesh/material/emissive 列出来便于诊断
+    // 找头部节点用于"扎古扫视"转头动作 — 名字包含 head/neck/skull 都算
+    // SD 风格模型可能没有命名节点, 此时 headNode 留 null, 退回到整体身体摆动
+    let headNode = null;
+    const allNodeNames = [];
+    model.traverse((node) => {
+      if (node.name) allNodeNames.push(node.name);
+      if (!headNode && /\b(head|neck|skull)\b/i.test(node.name || '')) {
+        headNode = node;
+      }
+    });
+    if (headNode) {
+      modelGroup.userData.headNode = headNode;
+      modelGroup.userData.headBaseRotY = headNode.rotation.y;
+      console.log('[PET] head node found:', headNode.name);
+    } else {
+      console.log('[PET] no head node, fallback to whole-body sweep. all node names:', allNodeNames);
+    }
+
+    const seenMats = new Set();
+    const allMatLog = [];
+    model.traverse((node) => {
+      if (!node.isMesh || !node.material) return;
+      const mats = Array.isArray(node.material) ? node.material : [node.material];
+      const nameHint = `${node.name || ''} ${node.material.name || ''}`.toLowerCase();
+      const nameMatch = /eye|monoeye|mono_eye|monocular|visor|lens|optic|camera|sensor|core|head/.test(nameHint);
+      mats.forEach((mat) => {
+        if (!mat || seenMats.has(mat.uuid)) return;
+        if (!mat.emissive) return;
+        const e = mat.emissive;
+        const emissiveLooksWarm = e.r > 0.04 && e.r >= e.g && e.r >= e.b;  // 红/橙/黄都接受
+        allMatLog.push({
+          mesh: node.name || '?',
+          mat: mat.name || '?',
+          emissive: `(${e.r.toFixed(2)},${e.g.toFixed(2)},${e.b.toFixed(2)})`,
+          picked: nameMatch || emissiveLooksWarm,
+        });
+        if (!nameMatch && !emissiveLooksWarm) return;
+        seenMats.add(mat.uuid);
+        eyeMaterials.push({
+          mat,
+          originalEmissive: mat.emissive.clone(),
+          originalIntensity: typeof mat.emissiveIntensity === 'number' ? mat.emissiveIntensity : 1.0,
+        });
+      });
+    });
+    console.log('[PET] all materials with emissive:', allMatLog);
+    console.log('[PET] eyeMaterials picked:', eyeMaterials.length);
+    // 兜底: 一个都没挑出来 → 不再操作模型材质, 仅靠 #alert-overlay 的 Target Lock HUD,
+    // 避免错把车体材质当眼睛染金导致整机变黄.
+
+    modelLoaded = true;
+
+    modelGroup.userData.headY = headY;
+    modelGroup.userData.sizeY = size.y;
+    modelGroup.userData.modelSizeZ = size.z;
+    modelGroup.userData.modelSizeX = size.x;
+
+    // ── Weapon Upgrade System ──────────────────────────────────
+    // 这段是给原 SD 扎古做的"等级武器装备"(护盾/炮/巴祖卡/翼/重装甲等), 几何位置写死在扎古坐标系.
+    // 换 VF-1 飞机后, 这些扎古配件会漂浮在飞机周围 → 整段禁用. 想恢复扎古时把 false 改成 true.
+    if (false) {
+      const sx = size.x, sy = size.y, sz = size.z;
+      const accGroup = new THREE.Group();
+      accGroup.rotation.x = model.rotation.x;
+      modelGroup.add(accGroup);
+
+      const mGreen = new THREE.MeshStandardMaterial({ color: 0x4b5320, metalness: 0.35, roughness: 0.6 });
+      const mDark  = new THREE.MeshStandardMaterial({ color: 0x252525, metalness: 0.75, roughness: 0.35 });
+      const mGun   = new THREE.MeshStandardMaterial({ color: 0x2e2e2e, metalness: 0.70, roughness: 0.40 });
+      const mYellow= new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.3,  roughness: 0.35, emissive: new THREE.Color(0x664400), emissiveIntensity: 0.5 });
+      const mGlow  = new THREE.MeshStandardMaterial({ color: 0xff5500, metalness: 0.2,  roughness: 0.5,  emissive: new THREE.Color(0xff2200), emissiveIntensity: 0.9 });
+      const mRed   = new THREE.MeshStandardMaterial({ color: 0xcc1500, metalness: 0.5,  roughness: 0.5,  emissive: new THREE.Color(0x330000), emissiveIntensity: 0.3 });
+
+      function mkMesh(geo, mat, px, py, pz, rx=0, ry=0, rz=0) {
+        const m = new THREE.Mesh(geo, mat);
+        m.position.set(px, py, pz);
+        if (rx || ry || rz) m.rotation.set(rx, ry, rz);
+        return m;
+      }
+      function mkGrp(minLv, ...meshes) {
+        const g = new THREE.Group();
+        meshes.forEach(m => g.add(m));
+        g.userData.minLevel = minLv;
+        g.visible = false;
+        accGroup.add(g);
+        return g;
+      }
+
+      // Lv3: Spiked shoulder shield (+X side)
+      const gShield = mkGrp(3,
+        mkMesh(new THREE.BoxGeometry(sx*0.22, sy*0.17, sz*0.07), mGreen,  sx*0.43,  sy*0.16,  sz*0.06),
+        mkMesh(new THREE.BoxGeometry(sx*0.24, sy*0.04, sz*0.07), mDark,   sx*0.43,  sy*0.27,  sz*0.06),
+        mkMesh(new THREE.CylinderGeometry(sx*0.025, sx*0.012, sy*0.07, 6), mGreen,  sx*0.43,  sy*0.335, sz*0.06)
+      );
+
+      // Lv4: 120mm shoulder cannon (model -X side)
+      const gCannon = new THREE.Group();
+      gCannon.userData.minLevel = 4;
+      gCannon.visible = false;
+      accGroup.add(gCannon);
+      gCannon.add(mkMesh(new THREE.BoxGeometry(sx*0.13, sy*0.09, sz*0.13), mDark, -sx*0.41, sy*0.19, sz*0.0));
+      {
+        const bPivot = new THREE.Group();
+        bPivot.position.set(-sx*0.41, sy*0.295, sz*0.13);
+        bPivot.rotation.x = -0.45;
+        bPivot.add(mkMesh(new THREE.CylinderGeometry(sx*0.028, sx*0.034, sy*0.24, 8), mGun,  0, 0, 0));
+        bPivot.add(mkMesh(new THREE.CylinderGeometry(sx*0.022, sx*0.03,  sy*0.05, 8), mDark, 0, sy*0.145, 0));
+        gCannon.add(bPivot);
+      }
+
+      // ── Lv5: H&L-SB25K/280mmA-P 扎古巴祖卡 (Zaku Bazooka) ──
+      // 9 个零件组合: 主筒 + 加固环 + 炮口 + 弹匣 + 弹匣顶盖 + 瞄准镜壳 + 目镜 + 扳机握把 + 护圈
+      // 用 pivot group 统一姿态: 整体右手腰前, 端枪指向右前方 ~23°
+      const gBazooka = new THREE.Group();
+      gBazooka.userData.minLevel = 5;
+      gBazooka.visible = false;
+      accGroup.add(gBazooka);
+      {
+        const bzPivot = new THREE.Group();
+        bzPivot.position.set(sx * 0.30, sy * 0.02, sz * 0.16);  // 右手腰前
+        bzPivot.rotation.set(0.06, 0.42, 0);                     // 略低头 + 朝右前 ~24°
+        gBazooka.add(bzPivot);
+
+        // 内部建模约定: 主筒沿 Z+ 轴方向 (cylinder 默认沿 Y, 加 rx=π/2 转过来)
+        const ZAXIS = Math.PI / 2;
+
+        // 1. 主筒身 — 军绿色, 跟扎古机体同色
+        bzPivot.add(mkMesh(
+          new THREE.CylinderGeometry(sx * 0.052, sx * 0.052, sy * 0.46, 14), mGreen,
+          0, 0, 0,
+          ZAXIS, 0, 0
+        ));
+        // 2. 主筒后段加固环 (黑色)
+        bzPivot.add(mkMesh(
+          new THREE.CylinderGeometry(sx * 0.06, sx * 0.06, sy * 0.04, 14), mDark,
+          0, 0, -sy * 0.20,
+          ZAXIS, 0, 0
+        ));
+        // 3. 炮口 (略带锥度, 灰枪色)
+        bzPivot.add(mkMesh(
+          new THREE.CylinderGeometry(sx * 0.062, sx * 0.05, sy * 0.06, 14), mGun,
+          0, 0, sy * 0.24,
+          ZAXIS, 0, 0
+        ));
+        // 4. 顶部弹匣箱 (黑色矩形仓, 装在筒身上方略偏后)
+        bzPivot.add(mkMesh(
+          new THREE.BoxGeometry(sx * 0.075, sy * 0.085, sy * 0.11), mDark,
+          0, sy * 0.078, -sy * 0.02
+        ));
+        // 5. 弹匣顶部装饰条 (灰色, 给弹匣加点层次)
+        bzPivot.add(mkMesh(
+          new THREE.BoxGeometry(sx * 0.082, sy * 0.014, sy * 0.115), mGun,
+          0, sy * 0.124, -sy * 0.02
+        ));
+        // 6. 瞄准镜壳 (黑色小盒, 装在筒身右侧靠后)
+        bzPivot.add(mkMesh(
+          new THREE.BoxGeometry(sx * 0.038, sy * 0.045, sy * 0.07), mDark,
+          sx * 0.05, sy * 0.045, -sy * 0.06
+        ));
+        // 7. 瞄准镜目镜筒 (灰色短圆柱, 朝后伸出)
+        bzPivot.add(mkMesh(
+          new THREE.CylinderGeometry(sx * 0.013, sx * 0.013, sy * 0.05, 8), mGun,
+          sx * 0.05, sy * 0.055, -sy * 0.115,
+          ZAXIS, 0, 0
+        ));
+        // 8. 扳机握把 (黑色垂直方块, 在筒身下方靠后)
+        bzPivot.add(mkMesh(
+          new THREE.BoxGeometry(sx * 0.042, sy * 0.115, sy * 0.05), mDark,
+          0, -sy * 0.075, -sy * 0.04
+        ));
+        // 9. 扳机护圈底 (灰色细条, 让握把有层次感)
+        bzPivot.add(mkMesh(
+          new THREE.BoxGeometry(sx * 0.048, sy * 0.018, sy * 0.075), mGun,
+          0, -sy * 0.13, -sy * 0.025
+        ));
+      }
+
+      // Lv6: Rear thruster pods (×2, glow nozzles)
+      const thrMeshes = [];
+      for (const s of [-1, 1]) {
+        thrMeshes.push(
+          mkMesh(new THREE.CylinderGeometry(sx*0.065, sx*0.055, sy*0.21, 8), mGreen, s*sx*0.21, -sy*0.09,  -sz*0.4),
+          mkMesh(new THREE.CylinderGeometry(sx*0.068, sx*0.048, sy*0.04, 8), mDark,  s*sx*0.21, -sy*0.215, -sz*0.4),
+          mkMesh(new THREE.CylinderGeometry(sx*0.035, sx*0.01,  sy*0.05, 8), mGlow,  s*sx*0.21, -sy*0.255, -sz*0.4)
+        );
+      }
+      const gThrusters = mkGrp(6, ...thrMeshes);
+
+      // Lv7: Flight wing binders (×2)
+      const wingMeshes = [];
+      for (const s of [-1, 1]) {
+        wingMeshes.push(
+          mkMesh(new THREE.BoxGeometry(sx*0.07, sy*0.38, sz*0.2),  mGreen, s*sx*0.525, sy*0.02,  -sz*0.18, 0, 0, s*0.15),
+          mkMesh(new THREE.BoxGeometry(sx*0.035, sy*0.3, sz*0.08), mDark,  s*sx*0.545, sy*0.02,  -sz*0.17, 0, 0, s*0.15),
+          mkMesh(new THREE.BoxGeometry(sx*0.05, sy*0.07, sz*0.06), mGreen, s*sx*0.525, sy*0.225, -sz*0.18, 0, 0, s*0.15)
+        );
+      }
+      const gWings = mkGrp(7, ...wingMeshes);
+
+      // Lv8: Commander V-fin + sensor array (yellow emissive)
+      const gCommander = mkGrp(8,
+        mkMesh(new THREE.BoxGeometry(sx*0.035, sy*0.14, sz*0.02), mYellow,  sx*0.07,  sy*0.49, sz*0.11, 0, 0, -0.38),
+        mkMesh(new THREE.BoxGeometry(sx*0.035, sy*0.14, sz*0.02), mYellow, -sx*0.07,  sy*0.49, sz*0.11, 0, 0,  0.38),
+        mkMesh(new THREE.CylinderGeometry(sx*0.018, sx*0.01, sy*0.09, 6), mYellow, 0, sy*0.465, sz*0.15, -0.28, 0, 0),
+        mkMesh(new THREE.BoxGeometry(sx*0.04, sy*0.035, sz*0.035), mYellow,  sx*0.22, sy*0.44, sz*0.08),
+        mkMesh(new THREE.BoxGeometry(sx*0.04, sy*0.035, sz*0.035), mYellow, -sx*0.22, sy*0.44, sz*0.08)
+      );
+
+      // Lv9: Full Armor chest plate + shoulder boosters
+      const gFullArmor = mkGrp(9,
+        mkMesh(new THREE.BoxGeometry(sx*0.42, sy*0.21, sz*0.07), mDark, 0,       sy*0.09, sz*0.31),
+        mkMesh(new THREE.BoxGeometry(sx*0.44, sy*0.04, sz*0.06), mGun,  0,       sy*0.21, sz*0.31),
+        mkMesh(new THREE.CylinderGeometry(sx*0.04, sx*0.035, sy*0.1, 6), mDark,  sx*0.37, sy*0.24, sz*0.05),
+        mkMesh(new THREE.CylinderGeometry(sx*0.04, sx*0.035, sy*0.1, 6), mDark, -sx*0.37, sy*0.24, sz*0.05)
+      );
+
+      // Lv10: Char's Custom red vernier nozzle
+      const gChar = mkGrp(10,
+        mkMesh(new THREE.CylinderGeometry(sx*0.055, sx*0.04, sy*0.14, 8), mRed,  0, -sy*0.2, sz*0.33),
+        mkMesh(new THREE.CylinderGeometry(sx*0.03,  sx*0.01, sy*0.06, 8), mGlow, 0, -sy*0.3, sz*0.4)
+      );
+
+      const allAccGroups = [gShield, gCannon, gBazooka, gThrusters, gWings, gCommander, gFullArmor, gChar];
+
+      function updateAccessories(level) {
+        allAccGroups.forEach(g => { g.visible = level >= g.userData.minLevel; });
+      }
+
+      modelGroup.userData.updateAccessories = updateAccessories;
+      modelGroup.userData.glowMat = mGlow;
+      updateAccessories(petState?.pet?.level || 1);
+    }
+  },
+  undefined,
+  (err) => {
+    console.error('GLB load error:', err);
+    document.getElementById('loading').textContent = '加载失败';
+  }
+);
+
+// ── Animation State ───────────────────────────────────────────────────
+let isDragging = false, dragStartX, dragStartY, winStartX, winStartY, clickStartTime;
+let isRotating = false;
+// 双击检测: 首次单击挂起 320ms, 期间二次点击就升级为双击
+let _pendingClickTimer = null;
+
+// ── 鼠标命中区 ─────────────────────────────────────────────────────────
+// petWindow 是 180×400 的全透明窗, 其中只有中间一小块画着 VF-1 模型, 其余空白
+// 也会吸收鼠标点击 → 把不点到机体的区域设为穿透, 让点击落到底层应用.
+// HIT_ZONE 取 Battloid (最高/最展) 形态的近似外接矩形, 加少量余量给气泡/装饰.
+const HIT_ZONE = { x: 30, y: 18, w: 120, h: 300 };
+let _mouseIgnored = false;
+function _inHitZone(cx, cy) {
+  return cx >= HIT_ZONE.x && cx <= HIT_ZONE.x + HIT_ZONE.w
+      && cy >= HIT_ZONE.y && cy <= HIT_ZONE.y + HIT_ZONE.h;
+}
+function _setIgnoreMouse(ignore) {
+  if (ignore === _mouseIgnored) return;
+  _mouseIgnored = ignore;
+  try { window.petAPI.setIgnoreMouse(ignore); } catch (_) {}
+}
+// 鼠标移动时根据位置切换穿透; 拖/旋转中不动, 避免中途丢事件
+document.addEventListener('mousemove', (e) => {
+  if (isDragging || isRotating) return;
+  _setIgnoreMouse(!_inHitZone(e.clientX, e.clientY));
+});
+// 离开窗口 → 恢复响应, 下次进入不会先卡在 ignore 状态
+document.addEventListener('mouseleave', () => { _setIgnoreMouse(false); });
+
+// 点击形态切换时随机播报的"情绪价值"金句 — 军事简报 + 战斗感, 不带忠诚/陪伴
+const EMO_LINES = [
+  '驾驶员辛苦了',
+  '听命',
+  '准备就绪',
+  '骷髅一号待命中',
+  '请下达指令',
+  '收到，立即变形',
+  '骷髅中队，出击',
+  '为驾驶员作战是我的使命',
+  '与驾驶员并肩作战',
+];
+let _lastEmoIdx = -1;
+function pickEmoLine() {
+  if (EMO_LINES.length <= 1) return EMO_LINES[0];
+  let idx;
+  do { idx = Math.floor(Math.random() * EMO_LINES.length); }
+  while (idx === _lastEmoIdx);
+  _lastEmoIdx = idx;
+  return EMO_LINES[idx];
+}
+// 形态循环: 根据当前 _morphTarget 推算下一态, 顺序 Gerwalk → Battloid → Fighter → Gerwalk
+function nextFormAfterClick() {
+  // 容差 0.2: 0.2 / 0.7 / 1.0 三档间隔够大
+  if (Math.abs(_morphTarget - 0.7) < 0.2) return { name: 'Battloid (人形)',  val: 1.0 };
+  if (Math.abs(_morphTarget - 1.0) < 0.15) return { name: 'Fighter (飞机)', val: 0.2 };
+  if (Math.abs(_morphTarget - 0.2) < 0.15) return { name: 'Gerwalk (半人形)', val: 0.7 };
+  return { name: 'Gerwalk (半人形)', val: 0.7 };  // fallback
+}
+let petState = null, bubbleTimer = null;
+let isHovering = false, currentMood = 'happy';
+let breakModeActive = false;   // 休息提醒醒目模式
+let patrolModeActive = false;  // 边沿巡航中: 'horizontal'(横边 Fighter) / 'vertical'(竖边 Gerwalk)
+let _patrolHeading = null;     // 横边航向: 'left' | 'right' | null — 决定哪个尾焰点亮
+let _thrusterDelayTimer = null; // 纵向脚底推进器延后亮起的定时器 (等 Gerwalk 变形完成再点)
+
+// ── 巡航即兴动作系统 ─────────────────────────────────────────────────────
+// 每条边随机触发一次"心情动作", 让飞行不机械. 所有动作都是临时叠加在常态摆动之上.
+// 用一个 currentManeuver 状态机, 每帧推进 progress, 到点结束.
+//
+// HORIZONTAL (Fighter 横飞, model 90° 侧身):
+//   barrel-roll  — 360° 桶滚, 经典战斗机动作, 1.5s
+//   wing-dip     — 急斜大角度 banking 然后回正, 1.0s, 像致敬动作
+//   pitch-bump   — 鼻头快速一抬一落 (扬升/俯冲感), 0.9s
+//   wag          — 短促左右尾摆 yaw 摇晃, 1.4s
+// VERTICAL (Gerwalk 升降, 正脸):
+//   hop          — 推力短暂加大向上一跳, 0.8s
+//   look-around  — 机身整体偏头扫视, 2.0s
+//   shimmy       — 横向左右快速漂移, 1.2s
+const HORIZONTAL_MANEUVERS = [
+  { kind: 'barrel-roll', duration: 1.5, weight: 7 },   // 加大权重 → 桶滚成为最常见即兴动作
+  { kind: 'wing-dip',    duration: 1.0, weight: 4 },
+  { kind: 'wag',         duration: 1.4, weight: 2 },
+];
+const VERTICAL_MANEUVERS = [
+  { kind: 'hop',         duration: 0.8, weight: 4 },
+  { kind: 'look-around', duration: 2.6, weight: 3 },
+  { kind: 'shimmy',      duration: 1.2, weight: 3 },
+];
+const MANEUVER_RATE_PER_S = 1/22;    // 每 22s 期望触发 1 次 (单段 leg ~28s, 平均每段 ~1.3 次, 配合冷却落地约 1 次)
+const MANEUVER_COOLDOWN_S = 5;       // 上次结束后至少 5s 才能再触发, 避免连发
+let _currentManeuver  = null;
+let _lastManeuverEndT = 0;
+
+function _pickWeighted(list) {
+  const total = list.reduce((s, m) => s + m.weight, 0);
+  let r = Math.random() * total;
+  for (const m of list) { if (r < m.weight) return m; r -= m.weight; }
+  return list[0];
+}
+
+// 在常态摆动后调用; 修改 modelGroup 的相应轴叠加临时动作效果
+function _tickManeuver(t, delta, sY, modelGroup, mode) {
+  if (_currentManeuver !== null) {
+    const elapsed = t - _currentManeuver.startT;
+    if (elapsed >= _currentManeuver.duration) {
+      _lastManeuverEndT = t;
+      _currentManeuver  = null;
+    } else {
+      const p = elapsed / _currentManeuver.duration;     // 0..1
+      const sg = _currentManeuver.randSign;
+      const env = Math.sin(p * Math.PI);                  // 0→1→0 包络
+      switch (_currentManeuver.kind) {
+        case 'barrel-roll': {
+          // 完整 360°, ease-in-out 平滑, 覆盖 banking
+          const eased = 0.5 * (1 - Math.cos(Math.PI * p));
+          modelGroup.rotation.x = eased * Math.PI * 2;
+          break;
+        }
+        case 'wing-dip':
+          // 在 banking 之上叠加 ±0.45 rad (~26°) 的急倾
+          modelGroup.rotation.x += sg * 0.45 * env;
+          break;
+        case 'wag':
+          // 整体 yaw 摆动 ±0.18 rad, 一个完整周期 (左→右→左)
+          modelGroup.rotation.y += 0.18 * Math.sin(p * Math.PI * 2);
+          break;
+        case 'hop':
+          // 纵向飞行时上跳 — 包络 sin 一升一落
+          modelGroup.position.y += sg * sY * 0.045 * env;
+          break;
+        case 'look-around':
+          // 完整 2 周期: 0 → +max → 0 → -max → 0, 起止都在 0 → 回正自然不突兀
+          // sg 决定先看哪边 (随机), 但端点都归 0
+          modelGroup.rotation.y += sg * 0.5 * Math.sin(p * Math.PI * 2);
+          break;
+        case 'shimmy':
+          // 左右快速横移, 3 个周期内完成
+          modelGroup.position.x += sg * sY * 0.04 * Math.sin(p * Math.PI * 3);
+          break;
+      }
+      return;
+    }
+  }
+  // 触发判定
+  if ((t - _lastManeuverEndT) < MANEUVER_COOLDOWN_S) return;
+  if (Math.random() < MANEUVER_RATE_PER_S * delta) {
+    const list = (mode === 'horizontal') ? HORIZONTAL_MANEUVERS : VERTICAL_MANEUVERS;
+    const m = _pickWeighted(list);
+    _currentManeuver = {
+      kind: m.kind,
+      duration: m.duration,
+      startT: t,
+      randSign: Math.random() < 0.5 ? -1 : 1,
+    };
+  }
+}
+// 用户手动旋转的偏移量, 叠加在自动 mood 摆动之上.
+// Shift+拖动 / 双指滑动改这俩值; 右键平滑回 0.
+let userYaw = 0, userPitch = 0;
+// isRotating 已在更上面声明 (与 isDragging 同一行附近, hit-zone 检测要用)
+
+const greetings = [
+  'VF-1S 骷髅一号，起动完毕',
+  '联合宇宙军女武神就位，待命中',
+  '感应器正常，目标追踪中',
+  '命令已确认，随时出击',
+  'GU-11 机炮已装填，待命',
+  '为了地球，为了驾驶员',
+  '骷髅一号随时待命'
+];
+
+// ── Render Loop ───────────────────────────────────────────────────────
+const clock = new THREE.Clock();
+let prevTime = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  const delta = t - prevTime;
+  prevTime = t;
+
+  // 机体基础 yaw lerp — 让"机头方向"切换平滑
+  if (modelGroup && modelGroup.userData.model) {
+    if (Math.abs(_baseYaw - _baseYawTarget) > 0.005) {
+      const dir = Math.sign(_baseYawTarget - _baseYaw);
+      const step = YAW_LERP_SPEED * delta;
+      _baseYaw = (dir > 0)
+        ? Math.min(_baseYawTarget, _baseYaw + step)
+        : Math.max(_baseYawTarget, _baseYaw - step);
+    }
+    modelGroup.userData.model.rotation.y = _baseYaw;
+  }
+
+  if (mixer) {
+    // 手动驱动变形进度 (Fighter ↔ Gerwalk)
+    const morphAct = modelGroup_actions['__ActionLegGERWALKgunner'];
+    const inMorph = _morphProgress !== _morphTarget;
+    if (morphAct) {
+      if (inMorph) {
+        // Clamp delta: 防止某一帧延迟突增 (如 GC 抖动) 让 progress 跳过密集 keyframes 段
+        // 上限 33ms = 30fps 步长. 慢于这个就让变形稍微延后, 避免视觉跳跃.
+        const dt = Math.min(delta, 0.033);
+        const dir = Math.sign(_morphTarget - _morphProgress);
+        const step = _currentMorphSpeed * dt;
+        _morphProgress = (dir > 0)
+          ? Math.min(_morphTarget, _morphProgress + step)
+          : Math.max(_morphTarget, _morphProgress - step);
+      }
+      morphAct.time = _morphProgress * morphAct.getClip().duration;
+      morphAct.paused = true;
+    }
+    // 静止状态(已到目标)时只调一次 mixer.update 让最后一帧应用; 之后跳过节省 CPU
+    if (inMorph || _morphProgress !== _lastSettledProgress) {
+      mixer.update(delta);
+      _lastSettledProgress = _morphProgress;
+    }
+  }
+
+  if (modelLoaded && modelGroup) {
+    const sY = modelGroup.userData.sizeY || 1;
+    const sX = modelGroup.userData.modelSizeX || 1;
+
+    // 根据状态选灯光颜色 (优先级: TERM 告警 > AX 缺失 > 待命)
+    eyeLight.color.setHex(termAlertActive ? 0xFFD000 : axMissingActive ? 0xFF8030 : 0xFF2200);
+
+    if (termAlertActive) {
+      // ── TERM 告警: 真正的高频方波闪烁 ──
+      // 6Hz 方波 (sin(t * 12π) > 0): on/off 各约 83ms, 肉眼明显的"flash" 而非脉动.
+      const flashOn = Math.sin(t * Math.PI * 12) > 0;
+      // 单眼快速横向扫视
+      eyeLight.position.x = Math.sin(t * 7) * (sX * 0.22);
+      // 灯光在 9.5 (亮) 和 0.6 (近灭) 之间方波切换 ── 真正会"灭一下"
+      eyeLight.intensity = flashOn ? 9.5 : 0.6;
+      // 模型自身眼睛材质的 emissive 也方波切金/暗
+      for (const e of eyeMaterials) {
+        e.mat.emissive.copy(flashOn ? GOLD_EMISSIVE : DARK_EMISSIVE);
+        e.mat.emissiveIntensity = flashOn ? 1.6 : 0.15;
+      }
+    } else if (axMissingActive) {
+      // ── AX 权限缺失: 缓慢琥珀脉冲, 区别于 TERM 的高频金色 ──
+      // 0.6Hz 平滑正弦 (周期 ~1.7s), 不闪烁只起伏, 不刺眼但提醒持续可见
+      const pulse = (Math.sin(t * Math.PI * 1.2) + 1) / 2; // 0..1
+      eyeLight.position.x = Math.sin(t * 0.9) * (sX * 0.16);
+      eyeLight.intensity = 2.0 + pulse * 3.5; // 2.0 ~ 5.5
+      for (const e of eyeMaterials) {
+        e.mat.emissive.copy(AMBER_EMISSIVE);
+        e.mat.emissiveIntensity = 0.5 + pulse * 0.7; // 0.5 ~ 1.2
+      }
+    } else {
+      // ── 待命: 红色单眼平滑扫视 + 一明一暗呼吸 ──
+      const eyeSpd = isHovering ? 2.8 : 1.15;
+      eyeLight.position.x = Math.sin(t * eyeSpd) * (sX * 0.18);
+      // 一明一暗: 非 hover ~1.4s 一周期, hover 时加快到 ~0.7s (机体兴奋感)
+      const breathSpd = isHovering ? 9 : 4.5;
+      const rawBreath = (Math.sin(t * breathSpd) + 1) * 0.5;       // 0..1 平滑正弦
+      const breath = Math.pow(rawBreath, 1.6);                     // 1.6 次方曲线 — 暗时段更长
+      eyeLight.intensity = (isHovering ? 0.4 : 0.2) + breath * (isHovering ? 11 : 9);
+      for (const e of eyeMaterials) {
+        e.mat.emissive.copy(e.originalEmissive);
+        e.mat.emissiveIntensity = (e.originalIntensity || 1) * (0.02 + breath * 3.8);
+      }
+    }
+    if (modelGroup.userData.glowMat) {
+      modelGroup.userData.glowMat.emissiveIntensity = 0.7 + Math.sin(t * 4.5) * 0.3;
+    }
+
+    // 告警状态: 身体完全静止 (单眼闪烁告警仍由上面的逻辑处理)
+    // 让用户视觉聚焦在"红/金光闪烁 + 雷达 + 警报音"上, 不被身体晃动分散注意
+    if (termAlertActive) {
+      modelGroup.rotation.x = 0;
+      modelGroup.rotation.y = 0;
+      modelGroup.rotation.z = 0;
+      modelGroup.position.y = 0;
+      const _headNd = modelGroup.userData.headNode;
+      if (_headNd) _headNd.rotation.y = modelGroup.userData.headBaseRotY || 0;
+      modelGroup.rotation.y += userYaw;
+      modelGroup.rotation.x += userPitch;
+    } else
+    // 巡航中: 抑制 mood 摆动 + 转头扫视, 但叠加一层"飞行姿态"轻摆动作模拟空气动力学.
+    // _baseYaw 仍由主进程通过 bodyYaw 指令控制 (横边 patrol-left/right 对齐航向, 竖边 face).
+    if (patrolModeActive) {
+      // 1) 重置/常态摆动 — 按巡航模式给三轴 + position 设基准振荡
+      modelGroup.rotation.y = 0;
+      modelGroup.position.x = 0;
+      if (patrolModeActive === 'vertical') {
+        // Gerwalk 升降: 0.32 俯仰基准 + 三轴呼吸式振荡 (1.6/1.2/2.0 Hz)
+        modelGroup.rotation.x = 0.32 + Math.sin(t * 1.6) * 0.05;
+        modelGroup.rotation.z = Math.sin(t * 1.2) * 0.03;
+        modelGroup.position.y = Math.sin(t * 2.0) * (sY * 0.014);
+      } else {
+        // Fighter 横飞: rotation.x ±0.12 rad banking (双向 wagging), 0.55 Hz
+        modelGroup.rotation.x = Math.sin(t * 0.55) * 0.12;
+        modelGroup.rotation.z = Math.sin(t * 0.7) * 0.025;
+        modelGroup.position.y = Math.sin(t * 1.4) * (sY * 0.010);
+      }
+      // 2) 即兴动作系统 — 在常态摆动之上叠加 (或对 barrel-roll 这类直接覆盖单轴)
+      _tickManeuver(t, delta, sY, modelGroup, patrolModeActive);
+      // 3) head 归位 + 用户手动旋转覆盖
+      const _headNd = modelGroup.userData.headNode;
+      if (_headNd) _headNd.rotation.y = modelGroup.userData.headBaseRotY || 0;
+      modelGroup.rotation.y += userYaw;
+      modelGroup.rotation.x += userPitch;
+    } else {
+      // Mood-based body animation —
+      // _patrolHeading 不为 null = 当前 yaw 是 90° 完全侧身 (Fighter 横飞 / 角落停顿).
+      // 此时给 rotation.x 加任何值都会变成机体 roll (侧倾), 必须强制为 0.
+      // ─ 用 block {} 包起来才能用 const, 否则 `} else const` 触发 lexical declaration syntax error ─
+      const sidewaysYaw = (_patrolHeading === 'left' || _patrolHeading === 'right');
+      const moodPitch   = sidewaysYaw ? 0 : IDLE_PITCH;
+      if (currentMood === 'excited') {
+        modelGroup.position.y = Math.abs(Math.sin(t * 8)) * (sY * 0.06);
+        modelGroup.rotation.y = 0;
+        modelGroup.rotation.z = 0;
+        modelGroup.rotation.x = moodPitch;
+      } else if (currentMood === 'thinking') {
+        modelGroup.position.y = Math.sin(t * 0.8) * (sY * 0.008);
+        modelGroup.rotation.z = 0;
+        modelGroup.rotation.y = 0;
+        modelGroup.rotation.x = moodPitch;
+      } else if (currentMood === 'sleeping') {
+        // sleeping 保留更大的前倾 (打瞌睡) 而非默认俯瞰; 侧身时也不倾
+        modelGroup.position.y = Math.sin(t * 0.4) * (sY * 0.005);
+        modelGroup.rotation.x = sidewaysYaw ? 0 : 0.45;
+        modelGroup.rotation.y = 0;
+        modelGroup.rotation.z = 0;
+      } else {
+        // happy / default
+        const bobSpd = isHovering ? 2.0 : 1.0;
+        const bobAmp = sY * (isHovering ? 0.013 : 0.007);
+        modelGroup.rotation.y = 0;
+        modelGroup.position.y = Math.sin(t * bobSpd) * bobAmp;
+        modelGroup.rotation.x = moodPitch;
+        modelGroup.rotation.z = 0;
+      }
+    }
+
+    // 醒目模式 scale 放大已禁用 — 用户偏好"安静"的飞行+变形, 不要缩放动作
+    // (光圈/蹦跳已经去掉, scale 缩回是飞机变回前的"往后缩"违和动作, 也一起去掉)
+
+    // ── 头部归位 — 用户偏好: 不再做扫视摆头, 头朝正前 (基础角度).
+    // 告警/巡航另有静止逻辑, 已在上方各分支处理过头部.
+    if (!termAlertActive && !patrolModeActive) {
+      const headNd = modelGroup.userData.headNode;
+      if (headNd) headNd.rotation.y = modelGroup.userData.headBaseRotY || 0;
+      // 用户手动旋转覆盖
+      modelGroup.rotation.y += userYaw;
+      modelGroup.rotation.x += userPitch;
+    }
+
+    // ── 整体下移 + 形态补偿 — 让机体接近地台 ──
+    // baseDown: 基础下移 (约 2cm), 让机体整体向下贴近地台
+    // morphComp: 形态补偿 — Battloid(progress=1) 不补偿, Gerwalk(0.7) 微补偿,
+    //            Fighter(0.2) 大幅下移 (因为飞机姿态本身离地高)
+    if (modelGroup.userData.sizeY) {
+      const sY = modelGroup.userData.sizeY;
+      const baseDown = sY * 0.10;
+      const morphComp = (1.0 - _morphProgress) * sY * 0.18;
+      modelGroup.position.y -= (baseDown + morphComp);
+    }
+  }
+
+  renderer.render(scene, camera);
+}
+animate();
+
+// ── App Logic ──────────────────────────────────────────────────────────
+function updateVisuals(pet) {
+  if (!pet) return;
+  currentMood = pet.mood || 'happy';
+  if (modelGroup?.userData?.updateAccessories) modelGroup.userData.updateAccessories(pet.level);
+}
+
+// duration > 0  : 到时自动隐藏 (常规情绪/提示气泡)
+// duration === 0: 常驻不消, 由调用方自己控制何时清掉 (如任务完成等单击切窗)
+// 停机平台已停用 — 用户偏好不要平台
+// 留个空函数避免改散落各处的调用点出错
+function updateBayVisibility() {
+  const bay  = document.getElementById('bay-platform');
+  const spot = document.getElementById('bay-spotlight');
+  if (bay)  bay.classList.remove('active');
+  if (spot) spot.classList.remove('active');
+}
+
+function showBubble(text, duration) {
+  const b = document.getElementById('speech-bubble');
+  b.textContent = text;
+  b.classList.add('visible');
+  clearTimeout(bubbleTimer);
+  if (duration > 0) {
+    bubbleTimer = setTimeout(() => b.classList.remove('visible'), duration);
+  }
+}
+
+// 控制扎古周围的 Target Lock HUD — 不依赖 GLB 材质, 兜底视觉.
+// 优先级: termAlert (金色锁定动画 + INPUT REQ + 充能条) > axMissing (静态暖橘 + AX OFFLINE) > 关闭
+// 任务完成 (taskDoneAvailable) 走气泡常驻提示, 不再叠加四角锁定框 — 该状态下不显示任何 HUD 框
+function updateAlertRing() {
+  const overlay = document.getElementById('alert-overlay');
+  if (!overlay) return;
+  overlay.classList.toggle('alert', termAlertActive);
+  overlay.classList.remove('target-locked');
+  overlay.classList.toggle('ax-missing', !termAlertActive && !taskDoneAvailable && axMissingActive);
+}
+
+// 用 Web Speech API + macOS 系统中文 TTS 念一句话, 同时弹气泡
+// persist=true: 气泡不自动消失, 由调用方负责清(任务完成场景, 等单击切窗)
+function speakZaku(text, persist) {
+  if (!text) return;
+  try {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'zh-CN';
+    u.rate = 0.95;
+    u.pitch = 1.0;
+    u.volume = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const priority = ['Tingting', 'Yu-shu', 'Li-Mu', 'Sinji', 'Meijia'];
+    let picked = null;
+    for (const p of priority) {
+      picked = voices.find(v => v.name === p);
+      if (picked) break;
+    }
+    if (!picked) picked = voices.find(v => /^zh-CN$/i.test(v.lang) && !v.name.includes('('));
+    if (picked) u.voice = picked;
+    // 语音结束时通知 main 进程, 让休息提醒序列能"等语音念完"再变形回去
+    u.onend = () => {
+      try { window.petAPI.notifySpeechEnd && window.petAPI.notifySpeechEnd(); } catch (_) {}
+    };
+    u.onerror = u.onend;
+    // Chromium/Electron 已知 bug: 窗口非焦点或运行一段时间后 speechSynthesis 进入
+    // 隐式 paused 状态, speak() 入队但永远不触发. resume() 强制唤醒.
+    // cancel() 清空旧队列避免上次残留的 utterance 卡在前面.
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.resume();
+    // cancel 是异步的, 给一帧时间让队列清空再入队新的
+    setTimeout(() => {
+      try { window.speechSynthesis.speak(u); } catch (_) {}
+    }, 50);
+    showBubble(text, persist ? 0 : 4000);
+    console.log('[PET] speak:', text, 'voice:', u.voice?.name || '(default)');
+  } catch (e) { console.error('[PET] speech failed:', e); }
+}
+
+async function init() {
+  petState = await window.petAPI.getState();
+  updateVisuals(petState.pet);
+
+  // 把可用 TTS voices 报给主进程, 方便看哪个最清晰
+  const reportV = () => {
+    const list = window.speechSynthesis.getVoices().map(v => ({
+      name: v.name, lang: v.lang, default: v.default, localService: v.localService
+    }));
+    if (list.length) window.petAPI.reportVoices(list);
+  };
+  reportV();
+  window.speechSynthesis.onvoiceschanged = reportV;
+
+  // 开机问候: 随机选一句, 延迟 600ms 等 voices 加载完
+  setTimeout(() => {
+    const greet = greetings[Math.floor(Math.random() * greetings.length)];
+    speakZaku(greet);
+  }, 600);
+
+  // 读取警报音开关初始值 (store 默认 true)
+  try {
+    const r = await window.petAPI.getAlertSoundEnabled();
+    _alertSoundEnabled = r && r.enabled !== false;
+  } catch {}
+
+  // ── 辅助功能权限持续监测 ───────────────────────────────────
+  // 没授权 → axMissingActive=true → 眼睛走琥珀脉冲 + 周期性气泡提醒
+  // 授权后 → 自动切回红色待命态, 不再打扰
+  let _axBubbleLastShown = 0;
+  async function pollAxStatus() {
+    try {
+      const r = await window.petAPI.checkAxTrusted();
+      const trusted = r && r.axTrusted === true;
+      const wasMissing = axMissingActive;
+      axMissingActive = !trusted;
+      if (axMissingActive) {
+        // 启动后 1 秒立刻气泡一次, 之后每 5 分钟再气泡一次 (避免打扰)
+        const now = Date.now();
+        if (!wasMissing || now - _axBubbleLastShown > 5 * 60 * 1000) {
+          showBubble('驾驶员, 缺辅助功能权限——无法监控 Claude Code 等全屏 TUI. 点击我打开面板查看', 8000);
+          _axBubbleLastShown = now;
+        }
+      } else if (wasMissing && !axMissingActive) {
+        // 刚刚获得授权
+        showBubble('辅助功能权限已就绪, 终端监控上线', 3500);
+      }
+      updateAlertRing();
+    } catch (e) { console.log('[PET] AX poll failed', e); }
+  }
+  // 启动后 1 秒第一次检查 (给主进程留点时间), 之后每 30 秒重检
+  setTimeout(pollAxStatus, 1000);
+  setInterval(pollAxStatus, 30000);
+
+  window.petAPI.onPetUpdate((data) => {
+    petState = Object.assign(petState || {}, data);
+    if (data.pet) updateVisuals(data.pet);
+    if (data.pet && data.pet.mood === 'excited') showBubble('任务完成！骷髅一号升级 ⚡', 2000);
+    if (data.reminderAlert) showBubble(data.reminderAlert, 6000);
+    if (data.petSay) showBubble(data.petSay, 4000);
+    if (data.speakText) speakZaku(data.speakText, !!data.speakPersist);
+    // Fighter 不到 0 — 动画 time=0 是"地面停机"(起落架放下/舱盖打开),
+    // 跳过最末端那段地面状态. 调大数值 = 飞机更像变形中, 调小 = 更接近完整飞机但可能露起落架
+    if (data.transformTo === 'fighter')   _morphTarget = 0.2;
+    if (data.transformTo === 'gerwalk')   _morphTarget = 0.7;
+    if (data.transformTo === 'battloid')  _morphTarget = 1.0;
+    if (data.bodyYaw === 'left')         { _baseYawTarget = BASE_YAW_LEFT;         _patrolHeading = null;    }
+    if (data.bodyYaw === 'right')        { _baseYawTarget = BASE_YAW_RIGHT;        _patrolHeading = null;    }
+    if (data.bodyYaw === 'face')         { _baseYawTarget = BASE_YAW_FACE;         _patrolHeading = null;    }
+    if (data.bodyYaw === 'patrol-left')  { _baseYawTarget = BASE_YAW_PATROL_LEFT;  _patrolHeading = 'left';  }
+    if (data.bodyYaw === 'patrol-right') { _baseYawTarget = BASE_YAW_PATROL_RIGHT; _patrolHeading = 'right'; }
+    if (typeof data.morphSpeed === 'number') _currentMorphSpeed = data.morphSpeed;
+    if (data.panelOpen !== undefined) updateBayVisibility();
+    if (data.firing !== undefined) {
+      document.querySelectorAll('.muzzle-flash').forEach(el => {
+        el.classList.toggle('firing', !!data.firing);
+      });
+    }
+    if (data.breakMode !== undefined) {
+      breakModeActive = !!data.breakMode;
+      const bubble = document.getElementById('speech-bubble');
+      if (bubble) bubble.classList.toggle('break', breakModeActive);
+      // 用户偏好: 休息提醒时不要光圈、不要 excited 蹦跳 — 保持安静的飞行 + 变形
+      // (aura 元素仍然存在但不激活, mood 不切换 → 机体保持当前姿态稳定地飞 + 变形)
+    }
+    // 边沿巡航模式: 'horizontal' / 'vertical' / false
+    //   horizontal: Fighter 横飞, 黄色尾焰按航向单侧点亮 (等变形完再亮)
+    //   vertical:   Gerwalk 升降, 镜头俯瞰露驾驶舱, 脚底冷焰 (等变形完再亮)
+    //   false:      恢复 mood, 全部熄火
+    // 两种模式都延迟 PATROL_FORM_SETTLE_MS (1.2s), 不在变形过程中喷火
+    if (data.patrolMode !== undefined) {
+      patrolModeActive = data.patrolMode || false;
+      updateBayVisibility();
+      // 切换巡航模式时清掉进行中的即兴动作 (避免卡在半圈翻滚 / 半截 hop 等)
+      _currentManeuver  = null;
+      _lastManeuverEndT = 0;
+
+      // 立即熄掉所有推进器 (变形开始/结束都先全熄)
+      if (_thrusterDelayTimer) { clearTimeout(_thrusterDelayTimer); _thrusterDelayTimer = null; }
+      document.querySelectorAll('.thruster, .tail-thruster').forEach(el => el.classList.remove('burning'));
+
+      if (data.patrolMode === 'vertical') {
+        // 1.2s 后(Gerwalk 形态摆好)再点亮脚底冷焰, 跟 main.js PATROL_FORM_SETTLE_MS 对齐
+        // horizontal (Fighter 横飞) 不再显示尾焰 — 在 180 窗口里效果不理想, 暂时关掉
+        _thrusterDelayTimer = setTimeout(() => {
+          _thrusterDelayTimer = null;
+          if (patrolModeActive !== 'vertical') return;
+          document.querySelectorAll('.thruster').forEach(el => el.classList.add('burning'));
+        }, 1200);
+      }
+    }
+    if (data.termAlert !== undefined) {
+      console.log('[PET] termAlert →', data.termAlert);
+      const wasActive = termAlertActive;
+      termAlertActive = !!data.termAlert;
+      updateAlertRing();
+      if (!wasActive && termAlertActive) {
+        stopAlertSound();   // 防御: 关掉旧扫频循环
+        startAlertVoiceLoop();  // 立即念 + 每 30s 重念
+      } else if (wasActive && !termAlertActive) {
+        stopAlertSound();
+        stopAlertVoiceLoop();
+      }
+    }
+    if (data.taskDoneAvailable !== undefined) {
+      const wasAvail = taskDoneAvailable;
+      taskDoneAvailable = !!data.taskDoneAvailable;
+      console.log('[PET] taskDoneAvailable →', taskDoneAvailable);
+      updateAlertRing();
+      // 任务完成 → false 的转移路径 (新 pending 抢占, 或本地点击已切窗后 main 广播确认):
+      // 把仍在显示的"任务已完成"常驻气泡清掉, 避免错过被陈旧文案占用
+      if (wasAvail && !taskDoneAvailable) {
+        const b = document.getElementById('speech-bubble');
+        if (b && b.textContent === '任务已完成') {
+          b.classList.remove('visible');
+        }
+      }
+    }
+    if (data.alertSoundEnabled !== undefined) {
+      _alertSoundEnabled = !!data.alertSoundEnabled;
+      if (!_alertSoundEnabled) {
+        stopAlertSound();
+        stopAlertVoiceLoop();
+      } else if (termAlertActive) {
+        startAlertVoiceLoop();   // 警报仍在, 刚被打开 → 立刻起循环
+      }
+    }
+  });
+}
+
+// ── Interaction ────────────────────────────────────────────────────────
+const petContainer = document.getElementById('pet-container');
+petContainer.addEventListener('mouseenter', () => { isHovering = true;  });
+petContainer.addEventListener('mouseleave', () => { isHovering = false; });
+
+// 双指滑动 / 鼠标滚轮 → 旋转扎古 (横向 yaw, 纵向 pitch)
+petContainer.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  if (!modelGroup) return;
+  userYaw -= e.deltaX * 0.005;
+  userPitch = Math.max(-0.7, Math.min(0.7, userPitch - e.deltaY * 0.005));
+}, { passive: false });
+
+// 右键 → 平滑回正旋转
+petContainer.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  const startYaw = userYaw, startPitch = userPitch;
+  const t0 = Date.now();
+  const reset = () => {
+    const k = Math.min(1, (Date.now() - t0) / 450);
+    const ease = 1 - Math.pow(1 - k, 3);
+    userYaw   = startYaw   * (1 - ease);
+    userPitch = startPitch * (1 - ease);
+    if (k < 1) requestAnimationFrame(reset);
+    else { userYaw = 0; userPitch = 0; }
+  };
+  reset();
+  showBubble('视角复位', 1200);
+});
+
+petContainer.addEventListener('mousedown', (e) => {
+  // Shift + 拖动 → 旋转模式 (不是移动窗口)
+  if (e.shiftKey) {
+    isRotating = true;
+    const sx0 = e.screenX, sy0 = e.screenY;
+    const yaw0 = userYaw, pitch0 = userPitch;
+    const onRot = (e2) => {
+      const dx = e2.screenX - sx0, dy = e2.screenY - sy0;
+      userYaw   = yaw0 + dx * 0.014;
+      userPitch = Math.max(-0.7, Math.min(0.7, pitch0 + dy * 0.012));
+    };
+    const onRotUp = () => {
+      isRotating = false;
+      document.removeEventListener('mousemove', onRot);
+      document.removeEventListener('mouseup', onRotUp);
+    };
+    document.addEventListener('mousemove', onRot);
+    document.addEventListener('mouseup', onRotUp);
+    e.preventDefault();
+    return;
+  }
+
+  isDragging = false;
+  clickStartTime = Date.now();
+  dragStartX = e.screenX; dragStartY = e.screenY;
+  const b = window.screenX !== undefined ? { x: window.screenX, y: window.screenY } : { x:0, y:0 };
+  winStartX = b.x; winStartY = b.y;
+
+  const onMove = async (e2) => {
+    const dx = e2.screenX - dragStartX, dy = e2.screenY - dragStartY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      isDragging = true;
+      await window.petAPI.movePet(winStartX + dx, winStartY + dy);
+    }
+  };
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup',   onUp);
+    if (!isDragging && Date.now() - clickStartTime < 300) {
+      // 优先级: 终端告警 > 休息提醒中 > 双击开面板 / 单击切形态
+      if (termAlertActive) {
+        window.petAPI.focusTerminalAlert();
+        showBubble('终端需要您确认！', 2500);
+      } else if (breakModeActive) {
+        // 休息提醒进行中, 不响应点击 (避免打断变形序列)
+      } else if (_pendingClickTimer) {
+        // 二次点击 (320ms 内) → 双击, 打开面板
+        clearTimeout(_pendingClickTimer);
+        _pendingClickTimer = null;
+        window.petAPI.togglePanel();
+      } else {
+        // 单击挂起, 等 320ms 看是否变成双击
+        _pendingClickTimer = setTimeout(() => {
+          _pendingClickTimer = null;
+          // 任务完成后单击 = 跳到对应 terminal (一次性, main 端会清状态)
+          if (taskDoneAvailable) {
+            taskDoneAvailable = false;  // 本地立即关, 防止重复跳; main 也会广播确认
+            updateAlertRing();
+            window.petAPI.focusTerminalAlert();
+            // 单击已经把焦点切过去了, 不再叠加"已切换..."提示;
+            // 但要主动清掉之前的"任务已完成"常驻气泡 (它没有自动隐藏定时器)
+            const b = document.getElementById('speech-bubble');
+            if (b) b.classList.remove('visible');
+            clearTimeout(bubbleTimer);
+            return;
+          }
+          const next = nextFormAfterClick();
+          _morphTarget = next.val;
+          playTransformSfx();
+          // 变形音替代语音, 只保留气泡显示情绪话
+          console.log('[PET] form →', next.name);
+          showBubble(pickEmoLine(), 4000);
+        }, 320);
+      }
+    }
+    isDragging = false;
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup',   onUp);
+  e.preventDefault();
+});
+
+init();
+</script>
+</body>
+</html>

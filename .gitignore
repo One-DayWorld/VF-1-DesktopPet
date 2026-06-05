@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Playwright MCP browsing sessions
+.playwright-mcp/
+
+# Claude Code local settings (may contain machine-specific paths)
+.claude/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment (if added later)
+.env
+.env.local
+.env.*.local
+
+# Large binary assets (optional — uncomment if you want to exclude models)
+# assets/*.glb
+# assets/*.gltf

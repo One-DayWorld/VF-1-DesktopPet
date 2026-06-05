@@ -1,0 +1,4105 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%; height: 100%;
+    font-family: 'Inter', -apple-system, 'SF Pro Display', BlinkMacSystemFont, sans-serif;
+    background: rgba(0, 8, 22, 0.88);
+    color: #d8eef8;
+    overflow: hidden;
+    user-select: none;
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  /* Scan-line overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 3px,
+      rgba(0, 160, 210, 0.016) 3px,
+      rgba(0, 160, 210, 0.016) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+    border-radius: 14px;
+  }
+
+  /* Window border glow */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    border: 1px solid rgba(0, 195, 240, 0.28);
+    border-radius: 14px;
+    pointer-events: none;
+    z-index: 9998;
+    box-shadow:
+      inset 0 0 60px rgba(0, 100, 180, 0.08),
+      0 8px 40px rgba(0, 80, 150, 0.25),
+      0 0 0 0.5px rgba(255, 255, 255, 0.06);
+  }
+
+  ::-webkit-scrollbar { width: 3px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(0, 180, 220, 0.25); border-radius: 2px; }
+
+  /* ── Titlebar ── */
+  #titlebar {
+    height: 40px;
+    background: rgba(0, 10, 28, 0.72);
+    position: relative; z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px;
+    -webkit-app-region: drag;
+    border-radius: 14px 14px 0 0;
+    border-bottom: 1px solid rgba(0, 150, 195, 0.18);
+    flex-shrink: 0;
+  }
+  #close-btn {
+    width: 11px; height: 11px;
+    background: #ff5f57;
+    border-radius: 50%;
+    cursor: pointer;
+    -webkit-app-region: no-drag;
+    border: none;
+    transition: box-shadow 0.2s;
+    flex-shrink: 0;
+  }
+  #close-btn:hover { box-shadow: 0 0 7px rgba(255, 95, 87, 0.9); }
+  #titlebar .title {
+    font-size: 11px;
+    font-weight: 500;
+    color: rgba(155, 210, 232, 0.9);
+    -webkit-app-region: no-drag;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  }
+
+  /* ── Pet Status ── */
+  #pet-status {
+    background: rgba(0, 10, 28, 0.62);
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    border-bottom: 1px solid rgba(0, 130, 175, 0.14);
+    flex-shrink: 0;
+    position: relative; z-index: 1;
+  }
+  .pet-mini-avatar {
+    width: 44px; height: 44px;
+    background: rgba(0, 40, 75, 0.62);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+    box-shadow: 0 0 0 1.5px rgba(0, 195, 240, 0.32), 0 0 14px rgba(0, 170, 215, 0.18);
+    flex-shrink: 0;
+  }
+  .pet-info { flex: 1; min-width: 0; }
+  .pet-name-level { font-size: 13px; font-weight: 600; color: #d0eaf6; letter-spacing: 0.02em; }
+  .xp-bar-wrap { margin-top: 5px; }
+  .xp-bar-bg { height: 3px; background: rgba(0, 70, 110, 0.45); border-radius: 2px; overflow: hidden; }
+  .xp-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #00a8d0, #00e4c0);
+    border-radius: 2px;
+    transition: width 0.5s ease;
+    box-shadow: 0 0 6px rgba(0, 200, 200, 0.55);
+  }
+  .xp-text { font-size: 10px; color: rgba(130, 200, 225, 0.88); margin-top: 3px; letter-spacing: 0.03em; }
+  .mood-icon { font-size: 18px; flex-shrink: 0; }
+
+  /* ── Tabs ── */
+  #tabs {
+    display: flex;
+    background: rgba(0, 10, 28, 0.68);
+    border-bottom: 1px solid rgba(0, 120, 165, 0.14);
+    flex-shrink: 0;
+    position: relative; z-index: 1;
+  }
+  .tab {
+    flex: 1;
+    padding: 9px 4px;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 500;
+    color: rgba(140, 200, 225, 0.82);
+    cursor: pointer;
+    transition: all 0.2s;
+    border-bottom: 2px solid transparent;
+    letter-spacing: 0.05em;
+    -webkit-app-region: no-drag;
+    position: relative;
+  }
+  .tab:hover { color: rgba(0, 200, 235, 0.75); }
+  .tab.active {
+    color: #00c8ec;
+    border-bottom-color: #00c8ec;
+    text-shadow: 0 0 9px rgba(0, 200, 235, 0.55);
+  }
+  .tab-badge {
+    position: absolute; top: 4px; right: 4px;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #ff4040;
+    box-shadow: 0 0 6px rgba(255, 60, 60, 0.9);
+    display: none;
+    animation: term-badge-pulse 1.2s ease-in-out infinite;
+  }
+  .tab-badge.active { display: block; }
+
+  /* ── Tab Content ── */
+  #tab-content {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    position: relative; z-index: 1;
+  }
+  .tab-pane {
+    display: none;
+    flex: 1;
+    min-height: 0;
+    padding: 12px 14px;
+    overflow-y: auto;
+    flex-direction: column;
+  }
+  .tab-pane.active { display: flex; }
+
+  /* Chat pane: messages scroll, input fixed at bottom */
+  #pane-chat.active { overflow: hidden; }
+  #chat-messages {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-bottom: 4px;
+  }
+
+  /* ── Chat ── */
+  .msg { display: flex; gap: 7px; align-items: flex-end; }
+  .msg.user { flex-direction: row-reverse; }
+  .msg-bubble {
+    max-width: 264px;
+    padding: 7px 12px;
+    font-size: 13px;
+    line-height: 1.65;
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+  .msg.pet .msg-bubble {
+    background: rgba(0, 18, 40, 0.78);
+    color: #c4e0ee;
+    border: 1px solid rgba(0, 145, 185, 0.2);
+    border-radius: 12px 12px 12px 3px;
+  }
+  .msg.user .msg-bubble {
+    background: rgba(0, 95, 148, 0.72);
+    color: #d4ecf8;
+    border: 1px solid rgba(0, 195, 232, 0.28);
+    border-radius: 12px 12px 3px 12px;
+    box-shadow: 0 0 14px rgba(0, 155, 210, 0.1);
+  }
+  .msg-avatar {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .msg.pet .msg-avatar {
+    background: rgba(0, 45, 85, 0.65);
+    box-shadow: 0 0 0 1px rgba(0, 175, 215, 0.22);
+  }
+  .msg.user .msg-avatar {
+    background: rgba(0, 95, 145, 0.65);
+    border: 1px solid rgba(0, 195, 232, 0.28);
+    font-size: 10px;
+    color: #98d4eb;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+  }
+
+  .msg-wrap { position: relative; display: inline-block; max-width: 264px; }
+  .msg-copy {
+    position: absolute; top: 4px; right: 4px;
+    background: rgba(0, 60, 100, 0.85); border: 1px solid rgba(0, 175, 215, 0.35);
+    color: rgba(150, 210, 235, 0.8); border-radius: 4px;
+    font-size: 10px; padding: 1px 5px; cursor: pointer;
+    opacity: 0; transition: opacity 0.15s; user-select: none; line-height: 16px;
+  }
+  .msg-wrap:hover .msg-copy { opacity: 1; }
+  .msg-copy:active { background: rgba(0, 130, 180, 0.7); }
+
+  .typing-indicator { display: flex; gap: 4px; padding: 7px 12px; }
+  .typing-dot {
+    width: 5px; height: 5px;
+    background: #00b4d8;
+    border-radius: 50%;
+    animation: typingPulse 1.2s ease-in-out infinite;
+  }
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes typingPulse {
+    0%,80%,100% { transform: scale(0.5); opacity: 0.3; }
+    40% { transform: scale(1); opacity: 1; }
+  }
+
+  #chat-input-area {
+    flex-shrink: 0;
+    margin-top: 10px;
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+  }
+  #chat-input {
+    flex: 1;
+    padding: 8px 13px;
+    background: rgba(0, 12, 30, 0.75);
+    border: 1px solid rgba(0, 155, 195, 0.24);
+    border-radius: 18px;
+    color: #c8e4f0;
+    font-size: 13px;
+    outline: none;
+    resize: none;
+    max-height: 80px;
+    font-family: inherit;
+    line-height: 1.5;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  #chat-input::placeholder { color: rgba(140, 195, 222, 0.62); }
+  #chat-input:focus {
+    border-color: rgba(0, 200, 235, 0.48);
+    box-shadow: 0 0 12px rgba(0, 175, 220, 0.14);
+  }
+  #send-btn {
+    width: 34px; height: 34px;
+    background: linear-gradient(135deg, rgba(0, 155, 200, 0.75), rgba(0, 115, 175, 0.75));
+    border: 1px solid rgba(0, 200, 235, 0.38);
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    color: #d0ecf8;
+    transition: all 0.15s;
+    flex-shrink: 0;
+    box-shadow: 0 0 10px rgba(0, 160, 210, 0.22);
+  }
+  #send-btn:hover {
+    box-shadow: 0 0 18px rgba(0, 180, 230, 0.42);
+    border-color: rgba(0, 220, 255, 0.55);
+  }
+  #send-btn:active { transform: scale(0.91); }
+  #send-btn:disabled { opacity: 0.28; cursor: default; box-shadow: none; }
+
+  /* ── Todo ── */
+  .todo-top-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 9px;
+    flex-shrink: 0;
+  }
+  .todo-list-label { font-size: 11px; color: rgba(145, 205, 228, 0.9); letter-spacing: 0.03em; }
+  .refresh-btn {
+    background: rgba(0, 28, 52, 0.62);
+    border: 1px solid rgba(0, 135, 172, 0.24);
+    color: rgba(95, 170, 200, 0.58);
+    border-radius: 50%;
+    width: 25px; height: 25px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    transition: color 0.2s, border-color 0.2s, box-shadow 0.2s;
+  }
+  .refresh-btn:hover {
+    color: #00c8ec;
+    border-color: rgba(0, 200, 235, 0.45);
+    box-shadow: 0 0 8px rgba(0, 180, 220, 0.2);
+  }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  .refresh-btn.spinning { animation: spin 0.7s linear infinite; }
+
+  .todo-add-row { display: flex; gap: 7px; margin-bottom: 9px; flex-shrink: 0; }
+  .todo-input {
+    flex: 1; padding: 7px 12px;
+    background: rgba(0, 18, 38, 0.72);
+    border: 1px solid rgba(0, 145, 185, 0.22);
+    border-radius: 9px;
+    color: #c8e4f0;
+    font-size: 13px; outline: none; font-family: inherit;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .todo-input::placeholder { color: rgba(140, 195, 222, 0.62); }
+  .todo-input:focus {
+    border-color: rgba(0, 200, 235, 0.44);
+    box-shadow: 0 0 10px rgba(0, 170, 215, 0.12);
+  }
+  .add-todo-btn {
+    padding: 7px 13px;
+    background: rgba(0, 135, 178, 0.32);
+    border: 1px solid rgba(0, 200, 235, 0.32);
+    border-radius: 9px;
+    color: rgba(160, 225, 245, 0.88);
+    font-size: 12px; font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    font-family: inherit;
+  }
+  .add-todo-btn:hover {
+    background: rgba(0, 158, 210, 0.42);
+    box-shadow: 0 0 10px rgba(0, 180, 225, 0.18);
+  }
+
+  .todo-date-row {
+    display: flex; align-items: center; gap: 5px;
+    padding: 4px 10px 6px; border-bottom: 1px solid rgba(0, 168, 218, 0.12);
+  }
+  .todo-date-label {
+    font-size: 10px; color: rgba(120, 185, 215, 0.6);
+    letter-spacing: 0.05em; white-space: nowrap; flex-shrink: 0;
+  }
+  .todo-date-input {
+    flex: 1; min-width: 0;
+    background: rgba(0, 12, 30, 0.55);
+    border: 1px solid rgba(0, 168, 218, 0.22);
+    border-radius: 5px; color: rgba(155, 222, 244, 0.88);
+    font-size: 11px; padding: 3px 6px;
+    font-family: 'SF Mono', monospace;
+    color-scheme: dark;
+  }
+  .todo-date-input:focus { outline: none; border-color: rgba(0, 195, 235, 0.45); }
+  .todo-date-clear {
+    background: none; border: none; color: rgba(120, 175, 210, 0.45);
+    font-size: 14px; cursor: pointer; padding: 0 2px; line-height: 1;
+    flex-shrink: 0;
+  }
+  .todo-date-clear:hover { color: rgba(200, 100, 80, 0.8); }
+
+  /* ── 芯片式 due-picker (用于 add + edit) ───────────────────── */
+  .due-picker {
+    display: flex; flex-direction: column; gap: 4px;
+    padding: 5px 10px 7px;
+    border-bottom: 1px solid rgba(0, 168, 218, 0.12);
+  }
+  .due-picker.compact { padding: 4px 0 0; border-bottom: none; }
+  .due-chips {
+    display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+  }
+  .due-chip-label {
+    font-size: 9.5px; color: rgba(120, 185, 215, 0.55);
+    letter-spacing: 0.05em; white-space: nowrap;
+    flex-shrink: 0; min-width: 28px;
+  }
+  .due-chip {
+    padding: 2px 8px;
+    background: rgba(0, 18, 38, 0.55);
+    border: 1px solid rgba(0, 125, 165, 0.18);
+    border-radius: 10px;
+    color: rgba(145, 200, 225, 0.78);
+    font-size: 10.5px; font-family: inherit;
+    cursor: pointer; transition: all 0.13s;
+    line-height: 1.3;
+  }
+  .due-chip:hover { border-color: rgba(0, 168, 218, 0.4); color: rgba(165, 220, 240, 0.95); }
+  .due-chip.active {
+    background: rgba(0, 135, 182, 0.32);
+    border-color: rgba(0, 200, 235, 0.55);
+    color: #00d8ee;
+    box-shadow: 0 0 6px rgba(0, 180, 225, 0.2);
+  }
+  .due-chip.mode-btn { font-style: italic; opacity: 0.7; }
+  .due-exact-input {
+    width: 100%;
+    background: rgba(0, 12, 30, 0.55);
+    border: 1px solid rgba(0, 168, 218, 0.22);
+    border-radius: 5px; color: rgba(155, 222, 244, 0.88);
+    font-size: 11px; padding: 3px 6px;
+    font-family: 'SF Mono', monospace; color-scheme: dark;
+    margin-top: 3px;
+  }
+  .due-preview {
+    font-size: 10px; color: rgba(180, 150, 60, 0.85);
+    font-family: 'SF Mono', monospace; letter-spacing: 0.03em;
+    display: flex; align-items: center; gap: 5px; min-height: 14px;
+  }
+  .due-preview.empty { color: rgba(120, 175, 210, 0.4); font-style: italic; }
+  .due-preview-clear {
+    background: none; border: none; color: rgba(180, 150, 60, 0.65);
+    font-size: 12px; cursor: pointer; padding: 0 3px; line-height: 1;
+  }
+  .due-preview-clear:hover { color: rgba(255, 100, 80, 0.9); }
+  .todo-due {
+    font-size: 9.5px; color: rgba(180, 150, 60, 0.75);
+    margin-top: 2px; font-family: 'SF Mono', monospace;
+    letter-spacing: 0.03em;
+  }
+  .todo-due.overdue { color: rgba(255, 80, 60, 0.85); }
+
+  .todo-filters { display: flex; gap: 5px; margin-bottom: 7px; flex-shrink: 0; }
+  .filter-btn {
+    padding: 3px 10px;
+    background: rgba(0, 18, 38, 0.65);
+    border: 1px solid rgba(0, 125, 165, 0.2);
+    border-radius: 6px;
+    color: rgba(145, 200, 225, 0.85);
+    font-size: 11px; font-weight: 400;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  .filter-btn.active {
+    background: rgba(0, 135, 182, 0.28);
+    border-color: rgba(0, 200, 235, 0.42);
+    color: #00c8ec;
+    box-shadow: 0 0 8px rgba(0, 180, 225, 0.14);
+  }
+
+  .todo-stats { font-size: 10px; color: rgba(120, 178, 205, 0.85); text-align: right; margin-bottom: 5px; flex-shrink: 0; letter-spacing: 0.03em; }
+
+  .todo-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 10px;
+    background: rgba(0, 20, 42, 0.72);
+    border: 1px solid rgba(0, 115, 155, 0.15);
+    border-radius: 9px;
+    margin-bottom: 5px;
+    transition: opacity 0.2s, border-color 0.2s;
+  }
+  .todo-item:hover { border-color: rgba(0, 165, 205, 0.24); }
+  .todo-item.done { opacity: 0.44; }
+  .todo-check {
+    width: 17px; height: 17px;
+    border: 1.5px solid rgba(0, 155, 195, 0.34);
+    border-radius: 50%;
+    cursor: pointer; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s;
+  }
+  .todo-check:hover { border-color: #00c8ec; box-shadow: 0 0 6px rgba(0, 200, 235, 0.28); }
+  .todo-check.checked {
+    background: rgba(0, 175, 212, 0.35);
+    border-color: #00c8ec;
+    box-shadow: 0 0 8px rgba(0, 200, 235, 0.28);
+  }
+  .todo-check.checked::after { content: '✓'; color: #90dff5; font-size: 10px; }
+  .todo-text-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .todo-text { font-size: 12.5px; color: #cce8f5; line-height: 1.45; }
+  .todo-item.done .todo-text { text-decoration: line-through; color: rgba(95, 150, 175, 0.48); }
+  .todo-del { background: none; border: none; color: rgba(120, 175, 205, 0.75); cursor: pointer; font-size: 14px; padding: 2px 4px; transition: color 0.2s; font-family: inherit; }
+  .todo-del:hover { color: #ff5252; }
+  .todo-edit-btn { background: none; border: none; color: rgba(118, 175, 205, 0.75); cursor: pointer; font-size: 12px; padding: 2px 4px; transition: color 0.2s; font-family: inherit; }
+  .todo-edit-btn:hover { color: #00c8ec; }
+  .todo-edit-input { flex: 1; padding: 4px 8px; background: rgba(0, 28, 52, 0.72); border: 1px solid rgba(0, 200, 235, 0.38); border-radius: 6px; color: #c8e4f0; font-size: 12.5px; outline: none; font-family: inherit; min-width: 0; }
+  .todo-edit-save { background: rgba(0, 135, 178, 0.38); border: 1px solid rgba(0, 200, 235, 0.34); color: #98d8f2; border-radius: 5px; padding: 3px 7px; font-size: 11px; cursor: pointer; flex-shrink: 0; font-family: inherit; }
+  .todo-edit-cancel { background: rgba(0, 18, 38, 0.5); border: 1px solid rgba(0, 98, 138, 0.24); color: rgba(135, 192, 215, 0.68); border-radius: 5px; padding: 3px 7px; font-size: 11px; cursor: pointer; flex-shrink: 0; font-family: inherit; }
+  .todo-empty { text-align: center; color: rgba(140, 195, 225, 0.88); font-size: 12.5px; padding: 28px 0; line-height: 1.8; }
+
+  /* ── Files ── */
+  .scan-btn {
+    width: 100%; padding: 9px;
+    background: rgba(0, 95, 140, 0.28);
+    border: 1px solid rgba(0, 178, 220, 0.28);
+    border-radius: 9px;
+    color: rgba(155, 218, 240, 0.88);
+    font-size: 12px; font-weight: 500;
+    cursor: pointer;
+    margin-bottom: 10px;
+    transition: all 0.2s;
+    font-family: inherit;
+    letter-spacing: 0.03em;
+  }
+  .scan-btn:hover {
+    background: rgba(0, 125, 175, 0.38);
+    box-shadow: 0 0 12px rgba(0, 172, 218, 0.18);
+    border-color: rgba(0, 200, 240, 0.4);
+  }
+  .scan-btn:disabled { opacity: 0.32; cursor: default; box-shadow: none; }
+  .scan-hint { font-size: 11px; color: rgba(135, 192, 218, 0.88); text-align: center; margin-bottom: 8px; line-height: 1.55; }
+  .section-header {
+    font-size: 10px; font-weight: 600;
+    color: rgba(0, 200, 240, 0.9);
+    text-transform: uppercase; letter-spacing: 0.1em;
+    margin-bottom: 8px; margin-top: 2px;
+  }
+  .section-divider { border: none; border-top: 1px solid rgba(0, 115, 158, 0.14); margin: 12px 0; }
+
+  .suggestion-item {
+    display: flex; align-items: flex-start; gap: 9px;
+    padding: 8px 10px;
+    background: rgba(0, 20, 42, 0.70);
+    border: 1px solid rgba(0, 115, 155, 0.14);
+    border-radius: 9px; margin-bottom: 5px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .suggestion-item:hover {
+    background: rgba(0, 48, 82, 0.48);
+    border-color: rgba(0, 188, 228, 0.32);
+    box-shadow: 0 0 10px rgba(0, 168, 214, 0.1);
+  }
+  .suggestion-num {
+    width: 19px; height: 19px; flex-shrink: 0;
+    background: rgba(0, 115, 165, 0.45);
+    border: 1px solid rgba(0, 178, 220, 0.28);
+    border-radius: 50%;
+    font-size: 10px; font-weight: 700;
+    color: #78d4f0;
+    display: flex; align-items: center; justify-content: center;
+    margin-top: 1px;
+  }
+  .suggestion-num.high { background: rgba(195, 55, 48, 0.38); border-color: rgba(255, 75, 58, 0.45); color: #ffaaa2; }
+  .suggestion-num.mid { background: rgba(178, 118, 0, 0.32); border-color: rgba(238, 158, 38, 0.42); color: #ffd078; }
+  .suggestion-text { font-size: 12px; color: rgba(200, 232, 245, 0.95); line-height: 1.5; flex: 1; }
+  .suggestion-arrow { font-size: 11px; color: rgba(120, 185, 215, 0.8); align-self: center; flex-shrink: 0; }
+  .suggestion-item:hover .suggestion-arrow { color: rgba(0, 198, 232, 0.65); }
+  .suggestions-loading { text-align: center; color: rgba(140, 198, 225, 0.88); font-size: 12.5px; padding: 18px 0; }
+
+  .file-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 10px;
+    background: rgba(0, 18, 38, 0.70);
+    border: 1px solid rgba(0, 108, 148, 0.14);
+    border-radius: 8px; margin-bottom: 4px;
+  }
+  .file-icon { font-size: 17px; flex-shrink: 0; }
+  .file-info { flex: 1; overflow: hidden; }
+  .file-name { font-size: 11.5px; color: rgba(200, 232, 245, 0.95); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file-meta { font-size: 10px; color: rgba(135, 188, 215, 0.88); margin-top: 1px; }
+  .file-reason { font-size: 10px; color: rgba(218, 178, 58, 0.68); }
+  .del-file-btn {
+    background: rgba(0, 18, 38, 0.6);
+    border: 1px solid rgba(0, 118, 158, 0.24);
+    color: rgba(125, 192, 218, 0.68);
+    border-radius: 6px; padding: 3px 8px;
+    font-size: 10.5px; cursor: pointer;
+    flex-shrink: 0; transition: all 0.15s;
+    white-space: nowrap; font-family: inherit;
+  }
+  .del-file-btn:hover { background: rgba(175, 38, 38, 0.32); border-color: rgba(255, 75, 68, 0.38); color: #ff9080; }
+  .files-empty { text-align: center; color: rgba(140, 195, 225, 0.88); font-size: 12.5px; padding: 28px 0; }
+
+  /* ── Suggestion file action button ── */
+  .suggestion-file-btn {
+    display: inline-flex; align-items: center; gap: 3px;
+    margin-top: 5px;
+    padding: 3px 8px;
+    background: rgba(0, 88, 128, 0.35);
+    border: 1px solid rgba(0, 172, 218, 0.30);
+    border-radius: 5px;
+    color: rgba(130, 205, 238, 0.92);
+    font-size: 10.5px; cursor: pointer;
+    transition: all 0.15s; font-family: inherit; line-height: 1.4;
+  }
+  .suggestion-file-btn:hover { background: rgba(0, 115, 165, 0.45); border-color: rgba(0, 200, 240, 0.42); color: rgba(160, 225, 248, 1); }
+
+  /* ── File Manager Overlay ── */
+  #file-manager-overlay {
+    position: absolute;
+    top: 40px; left: 0; right: 0; bottom: 0;
+    z-index: 800;
+    display: none; flex-direction: column;
+    background: rgba(0, 7, 20, 0.97);
+    border-top: 1px solid rgba(0, 160, 210, 0.22);
+    border-radius: 0 0 14px 14px;
+    overflow: hidden;
+  }
+  #file-manager-overlay.open { display: flex; }
+  #fm-header {
+    padding: 11px 14px 9px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid rgba(0, 115, 155, 0.18);
+    flex-shrink: 0;
+  }
+  #fm-title { font-size: 13px; font-weight: 600; color: rgba(175, 228, 248, 0.95); }
+  #fm-close-btn {
+    width: 22px; height: 22px;
+    background: rgba(0, 28, 52, 0.6);
+    border: 1px solid rgba(0, 115, 155, 0.22);
+    border-radius: 50%;
+    color: rgba(140, 195, 225, 0.75);
+    font-size: 14px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s; font-family: inherit; line-height: 1;
+  }
+  #fm-close-btn:hover { background: rgba(165, 42, 38, 0.35); border-color: rgba(255, 75, 68, 0.38); color: #ff9080; }
+  #fm-filters {
+    display: flex; gap: 5px;
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(0, 115, 155, 0.12);
+    flex-shrink: 0;
+  }
+  .fm-filter-btn {
+    padding: 3px 11px;
+    background: rgba(0, 18, 38, 0.65);
+    border: 1px solid rgba(0, 108, 148, 0.22);
+    border-radius: 20px;
+    color: rgba(135, 188, 215, 0.78);
+    font-size: 11px; cursor: pointer;
+    transition: all 0.15s; font-family: inherit;
+  }
+  .fm-filter-btn.active { background: rgba(0, 95, 145, 0.45); border-color: rgba(0, 188, 228, 0.42); color: rgba(165, 225, 248, 0.98); }
+  #fm-toolbar {
+    padding: 7px 12px;
+    display: flex; align-items: center; gap: 6px;
+    border-bottom: 1px solid rgba(0, 115, 155, 0.12);
+    flex-shrink: 0;
+  }
+  .fm-sel-btn {
+    padding: 3px 9px;
+    background: rgba(0, 28, 52, 0.55);
+    border: 1px solid rgba(0, 108, 148, 0.22);
+    border-radius: 6px;
+    color: rgba(130, 188, 215, 0.78);
+    font-size: 10.5px; cursor: pointer;
+    transition: all 0.15s; font-family: inherit; flex-shrink: 0;
+  }
+  .fm-sel-btn:hover { background: rgba(0, 55, 88, 0.55); border-color: rgba(0, 178, 220, 0.3); color: rgba(155, 215, 238, 0.92); }
+  #fm-count { font-size: 11px; color: rgba(140, 195, 228, 0.85); flex: 1; }
+  #fm-delete-btn {
+    padding: 4px 11px;
+    background: rgba(155, 38, 32, 0.35);
+    border: 1px solid rgba(218, 58, 48, 0.35);
+    border-radius: 7px;
+    color: rgba(255, 145, 125, 0.92);
+    font-size: 11px; cursor: pointer;
+    transition: all 0.18s; font-family: inherit; flex-shrink: 0;
+  }
+  #fm-delete-btn:hover:not(:disabled) { background: rgba(195, 48, 40, 0.52); border-color: rgba(255, 75, 65, 0.52); box-shadow: 0 0 10px rgba(218, 58, 48, 0.2); }
+  #fm-delete-btn:disabled { opacity: 0.32; cursor: default; }
+  #fm-list { flex: 1; overflow-y: auto; padding: 8px 12px 12px; }
+  .fm-item {
+    display: flex; align-items: center; gap: 9px;
+    padding: 8px 10px;
+    background: rgba(0, 18, 38, 0.68);
+    border: 1px solid rgba(0, 108, 148, 0.14);
+    border-radius: 9px; margin-bottom: 5px;
+    cursor: pointer; transition: all 0.15s; user-select: none;
+  }
+  .fm-item:hover { background: rgba(0, 35, 65, 0.72); border-color: rgba(0, 155, 198, 0.25); }
+  .fm-item.fm-selected { background: rgba(0, 52, 88, 0.72); border-color: rgba(0, 188, 228, 0.38); box-shadow: 0 0 8px rgba(0, 168, 214, 0.1); }
+  .fm-checkbox {
+    width: 16px; height: 16px; flex-shrink: 0;
+    border: 1.5px solid rgba(0, 155, 195, 0.45);
+    border-radius: 4px;
+    background: rgba(0, 18, 38, 0.65);
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+  }
+  .fm-item.fm-selected .fm-checkbox { background: rgba(0, 155, 198, 0.55); border-color: rgba(0, 198, 240, 0.72); }
+  .fm-item.fm-selected .fm-checkbox::after { content: '✓'; font-size: 10px; font-weight: 700; color: rgba(200, 238, 252, 0.95); }
+  .fm-thumb {
+    width: 40px; height: 40px; flex-shrink: 0;
+    border-radius: 6px; overflow: hidden;
+    background: rgba(0, 28, 52, 0.6);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    border: 1px solid rgba(0, 108, 148, 0.18);
+  }
+  .fm-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .fm-info { flex: 1; overflow: hidden; min-width: 0; }
+  .fm-name { font-size: 11.5px; color: rgba(205, 235, 248, 0.95); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fm-meta { font-size: 10px; color: rgba(130, 188, 215, 0.85); margin-top: 2px; }
+  .fm-tags { display: flex; gap: 4px; margin-top: 3px; align-items: center; flex-wrap: wrap; }
+  .fm-tag { font-size: 9.5px; padding: 1px 6px; border-radius: 3px; line-height: 1.6; }
+  .fm-tag.old { background: rgba(178, 128, 0, 0.25); color: rgba(228, 178, 48, 0.88); border: 1px solid rgba(218, 158, 28, 0.25); }
+  .fm-tag.large { background: rgba(0, 78, 128, 0.32); color: rgba(108, 188, 228, 0.92); border: 1px solid rgba(0, 148, 198, 0.28); }
+  .fm-tag.loc { background: rgba(0, 48, 78, 0.42); color: rgba(120, 188, 218, 0.85); border: 1px solid rgba(0, 118, 168, 0.22); }
+  .fm-reveal-btn {
+    padding: 2px 7px;
+    background: transparent;
+    border: 1px solid rgba(0, 108, 148, 0.28);
+    border-radius: 4px;
+    color: rgba(110, 178, 215, 0.72);
+    font-size: 9.5px; cursor: pointer;
+    transition: all 0.15s; font-family: inherit; white-space: nowrap; flex-shrink: 0;
+  }
+  .fm-reveal-btn:hover { border-color: rgba(0, 178, 220, 0.42); color: rgba(155, 215, 240, 0.95); background: rgba(0, 55, 88, 0.38); }
+  .fm-empty { text-align: center; color: rgba(140, 195, 225, 0.85); font-size: 12.5px; padding: 32px 0; line-height: 1.8; }
+
+  /* ── Windows Manager (WIN tab) ─────────────────────── */
+  #pane-windows { padding: 12px 14px; overflow-y: auto; }
+  .wins-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-soft);
+    margin-bottom: 10px;
+  }
+  .wins-title {
+    font-size: 11px;
+    color: var(--accent-gold);
+    letter-spacing: 0.1em;
+    font-weight: 600;
+  }
+  /* 竖列卡片网格: 每个应用一列, 760px 宽自动放 3-4 列 */
+  #wins-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 10px;
+    align-items: start;
+  }
+  .wins-group {
+    background: var(--bg-card);
+    border: 1px solid var(--border-faint);
+    border-radius: 8px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .wins-app {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px;
+    color: var(--accent-gold);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0 2px 7px;
+    border-bottom: 1px solid var(--border-faint);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .wins-app-name {
+    flex: 1; min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .wins-count {
+    color: var(--text-lo);
+    font-size: 9.5px;
+    font-weight: 400;
+    flex-shrink: 0;
+  }
+  .wins-item {
+    display: flex; align-items: center; gap: 5px;
+    padding: 5px 7px;
+    background: var(--bg-input);
+    border: 1px solid transparent;
+    border-radius: 5px;
+    margin-bottom: 3px;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .wins-item:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border-medium);
+  }
+  .wins-name {
+    flex: 1; min-width: 0;
+    font-size: 11px;
+    color: var(--text-md);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .wins-item:hover .wins-name { color: var(--text-hi); }
+  .wins-arrow {
+    color: var(--text-dim);
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+  .wins-item:hover .wins-arrow { color: var(--accent-gold); }
+  .wins-empty {
+    grid-column: 1 / -1;        /* 占满整行 */
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 12px;
+    padding: 28px 0;
+    line-height: 1.7;
+  }
+  .fm-scanning { text-align: center; color: rgba(140, 195, 225, 0.85); font-size: 12.5px; padding: 32px 0; }
+
+  /* ── Settings ── */
+  .setting-row { margin-bottom: 13px; }
+  .setting-label { font-size: 11px; color: rgba(148, 205, 228, 0.9); margin-bottom: 5px; letter-spacing: 0.03em; }
+  .setting-input {
+    width: 100%; padding: 8px 11px;
+    background: rgba(0, 18, 38, 0.72);
+    border: 1px solid rgba(0, 138, 178, 0.22);
+    border-radius: 9px;
+    color: #c8e4f0; font-size: 13px; outline: none; font-family: inherit;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .setting-input::placeholder { color: rgba(140, 195, 222, 0.62); }
+  .setting-input:focus { border-color: rgba(0, 200, 235, 0.44); box-shadow: 0 0 10px rgba(0, 170, 215, 0.12); }
+  .setting-input[type="password"] { letter-spacing: 2px; }
+  .save-btn {
+    padding: 7px 18px;
+    background: rgba(0, 125, 172, 0.32);
+    border: 1px solid rgba(0, 192, 232, 0.34);
+    border-radius: 8px;
+    color: rgba(155, 222, 244, 0.88);
+    font-size: 12px; font-weight: 500; cursor: pointer;
+    transition: all 0.2s; font-family: inherit;
+  }
+  .save-btn:hover { background: rgba(0, 152, 198, 0.42); box-shadow: 0 0 10px rgba(0, 172, 218, 0.18); }
+  .setting-note { font-size: 10.5px; color: rgba(130, 188, 215, 0.85); margin-top: 4px; line-height: 1.5; }
+  .setting-section { font-size: 10px; font-weight: 600; color: rgba(0, 205, 245, 0.92); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px; margin-top: 4px; }
+  .setting-success { color: #00e5a0; font-size: 11.5px; margin-top: 4px; display: none; }
+
+  .provider-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-bottom: 13px; }
+  .provider-card {
+    padding: 9px 7px;
+    background: rgba(0, 16, 34, 0.65);
+    border: 1px solid rgba(0, 118, 158, 0.2);
+    border-radius: 9px; cursor: pointer;
+    text-align: center; transition: all 0.2s;
+  }
+  .provider-card:hover { border-color: rgba(0, 168, 208, 0.38); background: rgba(0, 32, 62, 0.52); }
+  .provider-card.active {
+    border-color: rgba(0, 198, 232, 0.48);
+    background: rgba(0, 58, 98, 0.32);
+    box-shadow: 0 0 12px rgba(0, 172, 218, 0.14);
+  }
+  .provider-card .p-icon { font-size: 18px; margin-bottom: 3px; }
+  .provider-card .p-name { font-size: 11.5px; font-weight: 600; color: rgba(188, 222, 238, 0.84); }
+  .provider-card .p-model { font-size: 9.5px; color: rgba(140, 195, 222, 0.85); margin-top: 1px; }
+  .provider-card.active .p-model { color: rgba(138, 202, 228, 0.68); }
+
+  .key-section { background: rgba(0, 10, 25, 0.65); border: 1px solid rgba(0, 98, 138, 0.17); border-radius: 9px; padding: 10px; margin-bottom: 8px; }
+  .key-row { display: flex; gap: 7px; align-items: center; margin-top: 6px; }
+  .key-row .setting-input { font-size: 13px; letter-spacing: 0; }
+  .key-row .setting-input.has-key { letter-spacing: 3px; font-size: 14px; }
+  .key-save-btn {
+    padding: 7px 11px;
+    background: rgba(0, 118, 162, 0.32);
+    border: 1px solid rgba(0, 188, 232, 0.32);
+    border-radius: 8px;
+    color: rgba(145, 212, 238, 0.88);
+    font-size: 11.5px; font-weight: 500; cursor: pointer;
+    white-space: nowrap; flex-shrink: 0; transition: all 0.2s; font-family: inherit;
+  }
+  .key-save-btn:hover { background: rgba(0, 148, 198, 0.42); box-shadow: 0 0 8px rgba(0, 168, 218, 0.18); }
+  .key-status { font-size: 10px; margin-top: 4px; }
+  .key-status.set { color: #00e5a0; }
+  .key-status.unset { color: rgba(130, 188, 218, 0.85); }
+
+  .avatar-upload-wrap {
+    display: flex; align-items: center; gap: 14px; margin-top: 4px;
+  }
+  .avatar-preview-lg {
+    width: 62px; height: 62px; border-radius: 50%; flex-shrink: 0;
+    background: rgba(0, 18, 38, 0.68);
+    border: 1.5px solid rgba(0, 178, 214, 0.38);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 30px; overflow: hidden;
+  }
+  .avatar-preview-lg img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+  .avatar-upload-btn {
+    padding: 7px 14px;
+    background: rgba(0, 95, 140, 0.35);
+    border: 1px solid rgba(0, 178, 218, 0.32);
+    border-radius: 8px;
+    color: rgba(160, 225, 245, 0.88);
+    font-size: 12px; cursor: pointer;
+    transition: all 0.2s; font-family: inherit;
+  }
+  .avatar-upload-btn:hover { background: rgba(0, 125, 175, 0.48); box-shadow: 0 0 10px rgba(0, 172, 218, 0.2); }
+
+  /* ── Workflows ── */
+  .wf-section-header { display: flex; align-items: center; justify-content: space-between; }
+  .wf-add-btn {
+    padding: 3px 10px;
+    background: rgba(0, 118, 162, 0.32);
+    border: 1px solid rgba(0, 188, 232, 0.32);
+    border-radius: 6px;
+    color: rgba(145, 212, 238, 0.88);
+    font-size: 11px; cursor: pointer;
+    transition: all 0.2s; font-family: inherit;
+  }
+  .wf-add-btn:hover { background: rgba(0, 148, 198, 0.42); }
+  .wf-form-wrap {
+    background: rgba(0, 12, 28, 0.65);
+    border: 1px solid rgba(0, 148, 198, 0.22);
+    border-radius: 10px;
+    padding: 10px;
+    margin-bottom: 10px;
+    display: none;
+  }
+  .wf-form-wrap.open { display: block; }
+  .wf-form-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(0, 198, 255, 0.75);
+    margin-bottom: 8px;
+    letter-spacing: 0.5px;
+  }
+  .wf-input {
+    width: 100%; box-sizing: border-box;
+    background: rgba(0, 18, 38, 0.72);
+    border: 1px solid rgba(0, 138, 182, 0.24);
+    border-radius: 7px;
+    color: rgba(155, 222, 244, 0.88);
+    font-size: 12.5px; padding: 7px 10px;
+    font-family: inherit; outline: none;
+    margin-bottom: 7px;
+  }
+  .wf-input:focus { border-color: rgba(0, 200, 235, 0.44); }
+  .wf-textarea {
+    width: 100%; box-sizing: border-box;
+    background: rgba(0, 18, 38, 0.72);
+    border: 1px solid rgba(0, 138, 182, 0.24);
+    border-radius: 7px;
+    color: rgba(155, 222, 244, 0.88);
+    font-size: 12px; padding: 7px 10px;
+    font-family: inherit; outline: none; resize: vertical;
+    margin-bottom: 8px; line-height: 1.5;
+  }
+  .wf-textarea:focus { border-color: rgba(0, 200, 235, 0.44); }
+  .wf-form-btns { display: flex; gap: 7px; justify-content: flex-end; }
+  .wf-save-btn {
+    padding: 5px 14px;
+    background: rgba(0, 148, 198, 0.42);
+    border: 1px solid rgba(0, 198, 232, 0.38);
+    border-radius: 7px;
+    color: rgba(155, 222, 244, 0.95);
+    font-size: 12px; cursor: pointer;
+    transition: all 0.2s; font-family: inherit;
+  }
+  .wf-save-btn:hover { background: rgba(0, 168, 218, 0.55); }
+  .wf-cancel-btn {
+    padding: 5px 12px;
+    background: rgba(0, 16, 38, 0.5);
+    border: 1px solid rgba(0, 118, 162, 0.22);
+    border-radius: 7px;
+    color: rgba(130, 188, 218, 0.75);
+    font-size: 12px; cursor: pointer;
+    transition: all 0.2s; font-family: inherit;
+  }
+  .wf-cancel-btn:hover { border-color: rgba(0, 168, 208, 0.3); }
+  .wf-item {
+    background: rgba(0, 10, 24, 0.62);
+    border: 1px solid rgba(0, 118, 162, 0.2);
+    border-radius: 10px;
+    padding: 10px 11px;
+    margin-bottom: 7px;
+    transition: border-color 0.2s;
+  }
+  .wf-item:hover { border-color: rgba(0, 168, 208, 0.32); }
+  .wf-item-header { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+  .wf-item-name { flex: 1; font-size: 13px; font-weight: 600; color: rgba(175, 225, 245, 0.92); }
+  .wf-run-btn {
+    padding: 4px 12px;
+    background: rgba(0, 148, 198, 0.35);
+    border: 1px solid rgba(0, 188, 232, 0.35);
+    border-radius: 6px;
+    color: rgba(145, 212, 238, 0.9);
+    font-size: 11.5px; cursor: pointer;
+    transition: all 0.2s; font-family: inherit;
+  }
+  .wf-run-btn:hover { background: rgba(0, 168, 218, 0.5); }
+  .wf-run-btn:disabled { opacity: 0.5; cursor: default; }
+  .wf-edit-btn {
+    padding: 3px 9px;
+    background: rgba(0, 120, 180, 0.18);
+    border: 1px solid rgba(0, 148, 210, 0.35);
+    border-radius: 5px;
+    color: rgba(140, 210, 240, 0.9);
+    font-size: 11px; cursor: pointer;
+    transition: all 0.2s; font-family: inherit;
+  }
+  .wf-edit-btn:hover { background: rgba(0, 148, 210, 0.3); border-color: rgba(0, 178, 240, 0.55); }
+  .wf-del-btn {
+    padding: 3px 9px;
+    background: rgba(180, 40, 40, 0.12);
+    border: 1px solid rgba(220, 80, 80, 0.28);
+    border-radius: 5px;
+    color: rgba(240, 140, 140, 0.85);
+    font-size: 11px; cursor: pointer;
+    transition: all 0.2s; font-family: inherit;
+  }
+  .wf-del-btn:hover { background: rgba(200, 50, 50, 0.25); border-color: rgba(240, 100, 100, 0.5); }
+  .wf-prompt-preview {
+    font-size: 11px; color: rgba(130, 188, 218, 0.65);
+    line-height: 1.4; white-space: pre-wrap;
+    overflow: hidden; display: -webkit-box;
+    -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  .wf-result {
+    margin-top: 8px; padding: 8px 9px;
+    background: rgba(0, 22, 48, 0.55);
+    border: 1px solid rgba(0, 148, 198, 0.18);
+    border-radius: 7px;
+    font-size: 11.5px; color: rgba(155, 222, 244, 0.82);
+    line-height: 1.55; white-space: pre-wrap; display: none;
+  }
+  .wf-result.show { display: block; }
+  .wf-last-run { font-size: 10px; color: rgba(110, 175, 208, 0.55); margin-top: 5px; }
+  .wf-empty { text-align: center; padding: 20px; color: rgba(130, 188, 218, 0.45); font-size: 12px; }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed; bottom: 14px; left: 50%;
+    transform: translateX(-50%) translateY(16px);
+    background: rgba(0, 22, 46, 0.75);
+    border: 1px solid rgba(0, 178, 218, 0.28);
+    color: rgba(155, 222, 244, 0.94);
+    padding: 6px 14px; border-radius: 16px;
+    font-size: 11.5px; opacity: 0;
+    transition: all 0.28s ease;
+    pointer-events: none; white-space: nowrap;
+    box-shadow: 0 4px 20px rgba(0, 98, 158, 0.28);
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ══ VF-1 COCKPIT THEME (女武神战机仪表盘) ══════════════════════ */
+  :root {
+    /* 表面层级 — 深墨绿黑系 */
+    --bg-base:        #07100c;
+    --bg-titlebar:    #0a1612;
+    --bg-status:      #0d1c17;
+    --bg-tabs:        #081310;
+    --bg-card:        #0e1d18;
+    --bg-card-hover:  #142b23;
+    --bg-input:       #0a1714;
+    --bg-elevated:    #15302a;
+    --bg-msg-pet:     #0e1f1a;
+    --bg-msg-user:    #1a3a2c;
+
+    /* 边框层级 — 青绿色微荧光 */
+    --border-faint:   rgba(110, 240, 180, 0.10);
+    --border-soft:    rgba(120, 245, 185, 0.18);
+    --border-medium:  rgba(140, 255, 195, 0.30);
+    --border-accent:  rgba(160, 255, 205, 0.50);
+    --border-bright:  rgba(180, 255, 215, 0.70);
+
+    /* 文字层级 — monochrome CRT 青绿色 */
+    --text-hi:        rgba(180, 255, 215, 0.96);
+    --text-md:        rgba(135, 230, 180, 0.85);
+    --text-lo:        rgba(95, 185, 140, 0.66);
+    --text-dim:       rgba(70, 140, 105, 0.50);
+
+    /* 强调色 — 全绿统一 (亮青绿) */
+    --accent-gold:    #6effc8;
+    --accent-glow:    rgba(110, 255, 200, 0.40);
+    --accent-dim:     rgba(110, 255, 200, 0.18);
+    --status-ok:      #6ef0aa;
+    --status-warn:    #ffb850;
+    --status-err:     #ff5a48;
+  }
+
+  body { background: var(--bg-base); color: var(--text-hi); }
+  body::before {
+    border-color: var(--border-soft) !important;
+    box-shadow:
+      inset 0 0 80px rgba(120, 240, 180, 0.05),
+      0 8px 36px rgba(0, 18, 12, 0.55) !important;
+  }
+  body::after {
+    content: '';
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background:
+      repeating-linear-gradient(0deg, transparent, transparent 24px, rgba(120,240,180,0.024) 25px),
+      repeating-linear-gradient(90deg, transparent, transparent 24px, rgba(120,240,180,0.016) 25px);
+  }
+
+  #titlebar {
+    background: var(--bg-titlebar);
+    border-bottom: 1px solid var(--border-soft);
+  }
+  #titlebar .title { color: var(--text-md); }
+
+  #pet-status {
+    background: var(--bg-status);
+    border-bottom: 1px solid var(--border-faint);
+  }
+  .pet-mini-avatar {
+    background: var(--bg-elevated);
+    box-shadow: 0 0 0 1.5px var(--border-accent), 0 0 14px var(--accent-dim);
+  }
+  .pet-name-level {
+    color: var(--text-hi);
+    letter-spacing: 0.06em;
+    font-size: 12.5px;
+    text-transform: uppercase;
+  }
+  .xp-bar-bg { background: rgba(60, 40, 10, 0.6); }
+  .xp-bar-fill {
+    background: linear-gradient(90deg, #1a8c5e, var(--accent-gold)) !important;
+    box-shadow: 0 0 6px var(--accent-glow);
+  }
+  .xp-text { color: var(--text-lo) !important; }
+
+  #tabs {
+    background: var(--bg-tabs);
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .tab { color: var(--text-lo); font-size: 11px; letter-spacing: 0.08em; }
+  .tab:hover { color: var(--text-md); }
+  .tab.active {
+    color: var(--accent-gold) !important;
+    border-bottom: 3px solid var(--accent-gold) !important;   /* 加粗下划线 */
+    font-weight: 700;                                          /* 加粗 */
+    text-shadow: 0 0 8px var(--accent-glow);
+  }
+  .tab-pane { background: transparent; color: var(--text-hi); }
+  ::-webkit-scrollbar-thumb { background: rgba(120, 240, 180, 0.25); }
+  #chat-messages { scrollbar-color: rgba(120, 240, 180, 0.3) transparent; }
+
+  /* ── Chat ── */
+  .msg-bubble { max-width: 480px; }
+  .msg-wrap { max-width: 480px; }
+  .msg.pet .msg-bubble {
+    background: var(--bg-msg-pet);
+    border-color: var(--border-soft);
+    color: var(--text-hi);
+  }
+  .msg.pet .msg-avatar {
+    background: var(--bg-elevated);
+    box-shadow: 0 0 0 1px var(--border-medium);
+  }
+  .msg.user .msg-bubble {
+    background: var(--bg-msg-user);
+    border-color: var(--border-medium);
+    color: var(--text-hi);
+  }
+  .msg.user .msg-avatar {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-medium);
+    color: var(--text-md);
+  }
+  .msg-copy {
+    background: var(--bg-card-hover); border: 1px solid var(--border-medium);
+    color: var(--text-md);
+  }
+  .msg-copy:active { background: var(--bg-elevated); }
+  .typing-dot { background: var(--accent-gold); }
+
+  #chat-input {
+    background: var(--bg-input);
+    border: 1px solid var(--border-soft);
+    color: var(--text-hi);
+  }
+  #chat-input::placeholder { color: var(--text-dim); }
+  #chat-input:focus {
+    border-color: var(--border-accent) !important;
+    box-shadow: 0 0 0 2px var(--accent-dim) !important;
+  }
+  #send-btn {
+    background: linear-gradient(135deg, rgba(110, 255, 200, 0.5), rgba(60, 200, 150, 0.5));
+    border: 1px solid var(--border-accent);
+    color: var(--accent-gold);
+    box-shadow: 0 0 8px var(--accent-dim);
+  }
+  #send-btn:hover {
+    box-shadow: 0 0 16px var(--accent-glow);
+    border-color: var(--border-bright);
+  }
+
+  /* ── Markdown rendering inside pet message bubbles ── */
+  .msg-bubble.md {
+    line-height: 1.55;
+    white-space: normal;       /* 覆盖 .msg-bubble 默认的 pre-wrap, 改由我们 <div> 控制换行 */
+  }
+  .msg-bubble.md .md-line { display: block; }
+  .msg-bubble.md .md-line + .md-line { margin-top: 1px; }
+  .msg-bubble.md .md-gap { height: 6px; }
+  .msg-bubble.md strong { color: var(--accent-gold); font-weight: 700; }
+  .msg-bubble.md em { color: var(--text-md); font-style: italic; }
+  .msg-bubble.md .md-code {
+    background: var(--bg-input);
+    border: 1px solid var(--border-soft);
+    border-radius: 3px;
+    padding: 0 4px;
+    font-family: 'SF Mono', monospace;
+    font-size: 11.5px;
+    color: var(--accent-gold);
+  }
+  .msg-bubble.md .md-h {
+    font-weight: 700;
+    color: var(--accent-gold);
+    margin: 6px 0 3px;
+    letter-spacing: 0.04em;
+  }
+  .msg-bubble.md .md-h1 { font-size: 14px; }
+  .msg-bubble.md .md-h2 { font-size: 13px; }
+  .msg-bubble.md .md-h3 { font-size: 12.5px; }
+  .msg-bubble.md .md-list {
+    list-style: none;
+    padding-left: 4px;
+    margin: 4px 0;
+  }
+  .msg-bubble.md .md-list li {
+    position: relative;
+    padding-left: 14px;
+    margin: 2px 0;
+  }
+  .msg-bubble.md .md-list li::before {
+    content: '▸';
+    position: absolute;
+    left: 0; top: 0;
+    color: var(--accent-gold);
+    opacity: 0.7;
+  }
+  /* 表格样式 — 暖色 cockpit 风, 等宽数字, 表头深色块 */
+  .msg-bubble.md .md-table {
+    border-collapse: collapse;
+    margin: 6px 0;
+    font-family: 'SF Mono', 'Menlo', monospace;
+    font-size: 11.5px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-medium);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .msg-bubble.md .md-table th,
+  .msg-bubble.md .md-table td {
+    padding: 4px 9px;
+    border-right: 1px solid var(--border-faint);
+    border-bottom: 1px solid var(--border-faint);
+  }
+  .msg-bubble.md .md-table th:last-child,
+  .msg-bubble.md .md-table td:last-child { border-right: none; }
+  .msg-bubble.md .md-table tbody tr:last-child td { border-bottom: none; }
+  .msg-bubble.md .md-table th {
+    background: var(--bg-elevated);
+    color: var(--accent-gold);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--border-medium);
+  }
+  .msg-bubble.md .md-table td { color: var(--text-hi); }
+  .msg-bubble.md .md-table tbody tr:hover { background: rgba(255, 200, 80, 0.06); }
+
+  /* ── Quick prompt sidebar (COMM 右侧) ── */
+  #pane-chat.active { flex-direction: row; gap: 12px; }
+  #chat-main { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+  #chat-side {
+    width: 200px; flex-shrink: 0;
+    display: flex; flex-direction: column; gap: 6px;
+    padding-left: 10px; border-left: 1px solid var(--border-faint);
+    overflow-y: auto;
+  }
+  .qp-section-title {
+    font-size: 9px; color: var(--text-lo);
+    letter-spacing: 0.12em; text-transform: uppercase;
+    padding: 4px 0 2px; margin-top: 4px;
+  }
+  .qp-btn {
+    text-align: left;
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    color: var(--text-md);
+    border-radius: 6px;
+    padding: 6px 9px;
+    font-size: 11px; cursor: pointer;
+    transition: all 0.15s; font-family: inherit;
+    line-height: 1.35;
+  }
+  .qp-btn:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border-medium);
+    color: var(--text-hi);
+  }
+
+  /* ── Todo (MISSION) ── */
+  .todo-top-bar, .todo-add-row, .todo-date-row, .todo-filters { border-color: var(--border-faint); }
+  .todo-list-label { color: var(--text-md); }
+  .todo-date-label { color: var(--text-lo); }
+  .todo-date-input {
+    background: var(--bg-input); border-color: var(--border-soft); color: var(--text-hi);
+  }
+  .todo-date-input:focus { border-color: var(--border-accent); }
+  .due-picker { border-color: var(--border-faint); }
+  .due-chip-label { color: var(--text-lo); }
+  .due-chip {
+    background: var(--bg-card);
+    border-color: var(--border-soft);
+    color: var(--text-md);
+  }
+  .due-chip:hover { border-color: var(--border-medium); color: var(--text-hi); }
+  .due-chip.active {
+    background: rgba(110, 255, 200, 0.18);
+    border-color: var(--border-bright);
+    color: var(--accent-gold);
+    box-shadow: 0 0 6px var(--accent-dim);
+  }
+  .due-exact-input {
+    background: var(--bg-input); border-color: var(--border-soft); color: var(--text-hi);
+  }
+  .due-preview { color: var(--text-md); }
+  .due-preview.empty { color: var(--text-dim); }
+  .todo-due { color: var(--text-lo); }
+  .todo-due.overdue { color: var(--status-err); }
+  .todo-input {
+    background: var(--bg-input);
+    border: 1px solid var(--border-soft);
+    color: var(--text-hi);
+  }
+  .todo-input::placeholder { color: var(--text-dim); }
+  .todo-input:focus { border-color: var(--border-accent); }
+  .add-todo-btn, .refresh-btn {
+    background: rgba(110, 255, 200, 0.16);
+    border-color: var(--border-medium);
+    color: var(--accent-gold);
+  }
+  .filter-btn {
+    color: var(--text-lo); border-color: var(--border-soft); background: var(--bg-card);
+  }
+  .filter-btn:hover { color: var(--text-md); border-color: var(--border-medium); }
+  .filter-btn.active {
+    background: rgba(110, 255, 200, 0.16);
+    border-color: var(--border-accent);
+    color: var(--accent-gold);
+    box-shadow: 0 0 6px var(--accent-dim);
+  }
+  .todo-item {
+    background: var(--bg-card);
+    border: 1px solid var(--border-faint);
+  }
+  .todo-item:hover {
+    border-color: var(--border-medium);
+    background: var(--bg-card-hover);
+    box-shadow: 0 2px 10px rgba(80, 50, 0, 0.18);
+  }
+  .todo-check {
+    border-color: var(--border-medium);
+    background: transparent;
+  }
+  .todo-check.checked { background: var(--accent-gold); border-color: var(--accent-gold); }
+  .todo-text { color: var(--text-hi); }
+  .todo-stats { color: var(--text-lo); }
+  .todo-empty { color: var(--text-dim); }
+
+  /* ── Files / Suggestions ── */
+  .section-header, .section-title, .file-section h3, .wf-header {
+    color: var(--text-md); letter-spacing: 0.06em; font-size: 10px;
+  }
+  .scan-hint { color: var(--text-lo); }
+  .file-item, .suggestion-item {
+    background: var(--bg-card); border-color: var(--border-faint);
+  }
+  .file-item:hover, .suggestion-item:hover {
+    border-color: var(--border-medium);
+    background: var(--bg-card-hover);
+  }
+  .file-size { color: var(--text-lo); }
+  .file-name { color: var(--text-hi); }
+
+  /* ── Settings ── */
+  .settings-label { color: var(--text-md); font-size: 10px; letter-spacing: 0.06em; }
+  .settings-input, .settings-select, .setting-input {
+    background: var(--bg-input);
+    border: 1px solid var(--border-soft);
+    color: var(--text-hi);
+  }
+  .settings-input::placeholder, .setting-input::placeholder { color: var(--text-dim); }
+  .settings-input:focus, .settings-select:focus, .setting-input:focus {
+    border-color: var(--border-accent) !important;
+    box-shadow: 0 0 0 2px var(--accent-dim) !important;
+  }
+  .setting-note { color: var(--text-lo); }
+  .save-btn {
+    background: rgba(110, 255, 200, 0.16);
+    border-color: var(--border-accent);
+    color: var(--accent-gold);
+  }
+  .save-btn:hover {
+    background: rgba(110, 255, 200, 0.28);
+    box-shadow: 0 0 8px var(--accent-glow);
+  }
+  .wf-item { background: var(--bg-card); border-color: var(--border-faint); }
+  .toast {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-medium);
+    color: var(--text-hi);
+  }
+
+  /* HUD corner brackets — 弱化 (从 0.45 降到 0.30) */
+  #pet-status::before, #tab-content::before {
+    content: '';
+    position: absolute; top: 4px; left: 4px;
+    width: 12px; height: 12px;
+    border-top: 1px solid var(--border-medium);
+    border-left: 1px solid var(--border-medium);
+    pointer-events: none;
+  }
+  #pet-status::after, #tab-content::after {
+    content: '';
+    position: absolute; bottom: 4px; right: 4px;
+    width: 12px; height: 12px;
+    border-bottom: 1px solid var(--border-medium);
+    border-right: 1px solid var(--border-medium);
+    pointer-events: none;
+  }
+  #tab-content { position: relative; }
+
+  /* ── 760px 拉宽后的网格布局 ───────────────────────────────── */
+  /* FILES: 智能建议 2 列网格 */
+  #suggestion-list {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    align-content: start;
+  }
+  /* CHAT 侧栏空间窄: 单列布局, 间距收紧 */
+  #chat-side #suggestion-list {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  #chat-side #suggestion-list .suggestion-item { padding: 6px 8px; }
+  #chat-side #suggestion-list .suggestion-text { font-size: 11px; }
+  #chat-side .scan-btn { padding: 6px 8px; font-size: 11.5px; margin-bottom: 0; }
+  /* 边界态(loading/error)占整行 */
+  #suggestion-list .suggestions-loading { grid-column: 1 / -1; }
+  .suggestion-item { margin-bottom: 0 !important; }
+  .suggestion-num {
+    background: rgba(110, 255, 200, 0.18);
+    border-color: var(--border-medium);
+    color: var(--accent-gold);
+  }
+  .suggestion-num.high { background: rgba(220, 95, 60, 0.4); border-color: rgba(255, 130, 90, 0.55); color: #ffb497; }
+  .suggestion-num.mid  { background: rgba(195, 130, 30, 0.4); border-color: rgba(255, 175, 60, 0.55); color: #ffd693; }
+  .suggestion-text { color: var(--text-hi); font-size: 12px; line-height: 1.55; }
+  .suggestion-arrow { color: var(--text-lo); }
+  .suggestion-item:hover .suggestion-arrow { color: var(--accent-gold); }
+
+  /* TERM: 会话卡片 2 列网格 */
+  #term-sessions-container {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    flex: 1; min-height: 0;
+    overflow-y: auto;
+  }
+  .term-session-card { flex-shrink: 1; }
+  .term-prompt-preview {
+    color: var(--text-md);
+    background: var(--bg-input);
+    border-bottom-color: var(--border-faint);
+    max-height: 110px;
+  }
+  .term-card-header {
+    background: rgba(180, 90, 60, 0.2);
+    border-bottom-color: rgba(255, 100, 70, 0.3);
+    color: rgba(255, 175, 145, 0.92);
+  }
+  .term-alert-tag {
+    background: rgba(255, 100, 70, 0.25);
+    border-color: rgba(255, 130, 90, 0.5);
+    color: #ffb597;
+  }
+
+  /* SETTINGS: 卡片化 - 表单组成片状容器, 段落清晰 */
+  .settings-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-faint);
+    border-radius: 9px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+  }
+  .settings-card .settings-label,
+  .settings-card .setting-label {
+    display: block;
+    margin-bottom: 6px;
+  }
+  /* Provider cards 网格化 */
+  .provider-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .provider-card {
+    background: var(--bg-card-hover);
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .provider-card:hover {
+    border-color: var(--border-medium);
+    background: var(--bg-elevated);
+  }
+  .provider-card.active {
+    background: rgba(110, 255, 200, 0.18);
+    border-color: var(--border-bright);
+    box-shadow: 0 0 8px var(--accent-glow);
+  }
+
+  /* MISSION 双栏: 左清单, 右新建 */
+  #pane-todo.active { padding: 12px 14px; }
+  .mission-grid {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: 14px;
+    flex: 1; min-height: 0;
+  }
+  .mission-list-col {
+    display: flex; flex-direction: column;
+    min-height: 0; min-width: 0;
+  }
+  .mission-list-col #todo-list {
+    flex: 1; overflow-y: auto; min-height: 0;
+  }
+  .mission-add-col {
+    flex-shrink: 0;
+  }
+  .mission-add-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    padding: 12px 12px 14px;
+  }
+  .mission-card-title {
+    font-size: 10px;
+    color: var(--accent-gold);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+  }
+
+  /* ══ HUD 风格容器 (MISSION tab 样板, 后续推广到其他 tab) ══════════════
+     原理:
+       1) clip-path: polygon(...) 切 4 个 12px 斜角 → 八边形外形
+       2) ::before 用 mask-composite 切出"环状描边", 在内圈打洞
+          → 给八边形加 1.5px 渐变发光边
+       3) ::after 装饰: 顶部一对短刻度 + 底部中线 (pure CSS, 无图片)
+       4) 顶部内置 .hud-pill 胶囊标题 (置于斜角下方, 不会被 clip 切掉)
+     注意: clip-path 会同时裁剪子元素, 因此胶囊只能"嵌在内部 顶部",
+           不能像参考图那样跨边界半上半下 (那样需要外层包装) */
+  .hud-frame {
+    position: relative;
+    background: var(--bg-card);
+    padding: 22px 12px 14px;  /* 顶部留 22px 给 pill */
+    clip-path: polygon(
+      12px 0, calc(100% - 12px) 0,
+      100% 12px, 100% calc(100% - 12px),
+      calc(100% - 12px) 100%, 12px 100%,
+      0 calc(100% - 12px), 0 12px
+    );
+  }
+  .hud-frame::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    padding: 1.5px;
+    background: linear-gradient(135deg,
+      rgba(110, 255, 200, 0.85) 0%,
+      rgba(110, 255, 200, 0.22) 35%,
+      rgba(110, 255, 200, 0.55) 70%,
+      rgba(110, 255, 200, 0.85) 100%);
+    /* 中间打洞 → 只剩边缘 1.5px 环状高光 */
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+            mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    pointer-events: none;
+  }
+  /* 顶部装饰刻度 — 在 pill 两侧画两组短虚线, 像参考图的"⋯ ⋯"刻度感 */
+  .hud-frame::after {
+    content: "";
+    position: absolute;
+    top: 11px; left: 18px; right: 18px; height: 1px;
+    background:
+      linear-gradient(90deg,
+        transparent 0,
+        var(--border-soft) 0, var(--border-soft) 8px,
+        transparent 8px, transparent 14px,
+        var(--border-soft) 14px, var(--border-soft) 18px,
+        transparent 18px),
+      linear-gradient(90deg,
+        transparent calc(100% - 18px),
+        var(--border-soft) calc(100% - 18px), var(--border-soft) calc(100% - 14px),
+        transparent calc(100% - 14px), transparent calc(100% - 8px),
+        var(--border-soft) calc(100% - 8px), var(--border-soft) 100%,
+        transparent 100%);
+    pointer-events: none;
+    opacity: 0.7;
+  }
+  .hud-pill {
+    position: absolute;
+    top: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 2px 14px 3px;
+    background: linear-gradient(180deg, rgba(20, 55, 42, 0.95), rgba(14, 30, 24, 0.95));
+    color: var(--accent-gold);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    border: 1px solid var(--border-accent);
+    border-radius: 2px;
+    text-shadow: 0 0 6px var(--accent-glow);
+    z-index: 2;
+    white-space: nowrap;
+    text-transform: uppercase;
+  }
+  .hud-pill::before, .hud-pill::after {
+    /* pill 两侧的小三角刻痕, 加机甲味 */
+    content: "";
+    position: absolute;
+    top: 50%;
+    width: 4px; height: 4px;
+    background: var(--accent-gold);
+    transform: translateY(-50%) rotate(45deg);
+    box-shadow: 0 0 4px var(--accent-glow);
+  }
+  .hud-pill::before { left: -3px; }
+  .hud-pill::after  { right: -3px; }
+
+  /* MISSION tab: 把 list-col 和 add-card 套上 HUD 框 */
+  .mission-list-col.hud-frame { padding: 24px 10px 12px; }
+  .mission-list-col.hud-frame #todo-list { margin-top: 4px; }
+  .mission-add-card.hud-frame {
+    background: var(--bg-card);  /* 覆盖原 .mission-add-card 的 bg */
+    border: none;                 /* 让 ::before 当边框 */
+    border-radius: 0;             /* clip-path 接管外形 */
+    padding: 24px 12px 14px;
+  }
+  .mission-add-card.hud-frame .mission-card-title {
+    /* HUD 模式下原标题让位给顶部 pill, 内部小标题降级 */
+    display: none;
+  }
+
+  /* hud-frame 当作纵向 flex 容器, 让 #chat-messages / #wins-list 等可滚动子元素正常 fill */
+  .hud-frame.flex-fill {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+  /* CHAT */
+  #chat-main.hud-frame  { padding: 26px 12px 12px; }
+  #chat-side.hud-frame  {
+    border-left: none !important;       /* 原本的左侧细线让位给 HUD 边 */
+    padding: 26px 10px 12px;
+  }
+  /* TERM / WIN / MRKT — 单框包整个 tab 内容 */
+  #pane-terminal > .hud-frame,
+  #pane-windows  > .hud-frame,
+  #pane-finance  > .hud-frame { padding: 24px 10px 12px; }
+  /* TERM 内部子标题/状态条 — 紧贴 pill 下方 */
+  #pane-terminal > .hud-frame .term-header { margin-bottom: 6px; }
+  /* WORKFLOW — 单框 (AI 智能建议已移到 CHAT 侧栏) */
+  #pane-files > .hud-frame { padding: 22px 14px 14px; }
+  /* CONFIG — 设置项分两组 (PET / AI), 每组一个框 */
+  #pane-settings > .hud-frame { padding: 22px 14px 14px; margin-bottom: 12px; }
+  #pane-settings > .hud-frame:last-child { margin-bottom: 0; }
+  .mission-add-card .todo-add-row { margin-bottom: 8px; }
+  .mission-add-card .due-picker {
+    border-bottom: none !important;
+    padding: 0 !important;
+  }
+  .mission-add-hint {
+    font-size: 9.5px;
+    color: var(--text-dim);
+    margin-top: 8px;
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+  }
+
+  /* 760px 下加大列表项可读区, 项目内 padding/字号略增 */
+  .todo-item { padding: 10px 12px; }
+  .todo-text { font-size: 13px; }
+  .todo-due { font-size: 10px; margin-top: 3px; }
+
+  /* 通用: 让所有按钮悬停的辉光更暖 */
+  .file-action-btn,
+  .scan-files-btn,
+  .refresh-btn:hover {
+    box-shadow: 0 0 8px var(--accent-dim);
+  }
+
+  /* ── 辅助功能权限警告横幅 ─────────────────────────────────── */
+  #ax-warning-banner {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 14px;
+    background: linear-gradient(90deg, rgba(180, 60, 30, 0.32), rgba(140, 70, 20, 0.28));
+    border-bottom: 1px solid rgba(255, 110, 70, 0.5);
+    color: rgba(255, 195, 165, 0.96);
+    font-size: 11.5px;
+    flex-shrink: 0;
+    position: relative; z-index: 2;
+    animation: axw-attention 2.4s ease-in-out infinite;
+  }
+  @keyframes axw-attention {
+    0%, 100% { box-shadow: 0 0 0 rgba(255, 100, 50, 0); }
+    50%      { box-shadow: 0 0 14px rgba(255, 100, 50, 0.4) inset; }
+  }
+  .axw-icon {
+    font-size: 18px; flex-shrink: 0;
+    color: #ff8a55;
+    text-shadow: 0 0 8px rgba(255, 110, 60, 0.6);
+  }
+  .axw-text { flex: 1; min-width: 0; line-height: 1.4; }
+  .axw-title {
+    font-weight: 600; font-size: 12px;
+    color: #ffb497; letter-spacing: 0.04em;
+  }
+  .axw-sub {
+    font-size: 10.5px; color: rgba(255, 175, 145, 0.78);
+    margin-top: 2px;
+  }
+  .axw-sub strong { color: #ffd078; font-weight: 600; }
+  .axw-btn {
+    flex-shrink: 0;
+    background: rgba(255, 130, 80, 0.22);
+    border: 1px solid rgba(255, 145, 90, 0.55);
+    border-radius: 6px;
+    color: #ffc89c;
+    font-size: 11px; font-family: inherit; font-weight: 500;
+    padding: 5px 11px; cursor: pointer;
+    transition: all 0.15s; letter-spacing: 0.02em;
+  }
+  .axw-btn:hover {
+    background: rgba(255, 140, 90, 0.34);
+    border-color: rgba(255, 165, 110, 0.75);
+    box-shadow: 0 0 10px rgba(255, 110, 60, 0.4);
+  }
+  .axw-dismiss {
+    flex-shrink: 0;
+    background: none; border: none;
+    color: rgba(255, 175, 145, 0.5);
+    font-size: 16px; cursor: pointer; padding: 0 4px;
+    line-height: 1; transition: color 0.15s;
+  }
+  .axw-dismiss:hover { color: #ff8a55; }
+  /* Weapon strip */
+  .weapon-strip {
+    display: flex; gap: 4px; margin-top: 5px; flex-wrap: wrap;
+  }
+  .weapon-chip {
+    font-size: 9.5px; padding: 1px 5px; border-radius: 3px;
+    font-family: 'SF Mono', monospace; letter-spacing: 0.04em;
+    border: 1px solid transparent; transition: all 0.25s;
+    user-select: none;
+  }
+  /* 武器 chip 跟随 cockpit 青绿主题: locked=暗灰绿, unlocked=主题青绿, active=红橙(交战态保留)*/
+  .weapon-chip.locked {
+    background: rgba(14, 30, 24, 0.6);
+    border-color: rgba(110, 255, 200, 0.12);
+    color: rgba(95, 185, 140, 0.45);
+  }
+  .weapon-chip.unlocked {
+    background: rgba(110, 255, 200, 0.12);
+    border-color: rgba(160, 255, 205, 0.45);
+    color: var(--accent-gold);
+  }
+  .weapon-chip.active {
+    background: rgba(180,30,0,0.3);
+    border-color: rgba(255,60,30,0.55);
+    color: rgba(255,140,80,0.95);
+    animation: chipPulse 1.6s ease-in-out infinite;
+  }
+  @keyframes chipPulse {
+    0%, 100% { box-shadow: 0 0 4px rgba(255,60,30,0.3); }
+    50% { box-shadow: 0 0 10px rgba(255,80,40,0.6); }
+  }
+
+  /* ── Terminal Monitor ── */
+  #pane-terminal { gap: 8px; }
+  .term-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 9px;
+    background: rgba(0, 25, 45, 0.7);
+    border: 1px solid rgba(0, 175, 215, 0.18);
+    border-radius: 4px;
+    font-size: 10px; color: rgba(130, 190, 220, 0.7);
+    letter-spacing: 0.08em; flex-shrink: 0;
+  }
+  .term-status-dot {
+    display: inline-block; width: 6px; height: 6px;
+    border-radius: 50%; margin-right: 5px; vertical-align: middle;
+    background: rgba(0, 200, 235, 0.7);
+    box-shadow: 0 0 5px rgba(0, 200, 235, 0.5);
+    animation: term-dot-pulse 2s ease-in-out infinite;
+  }
+  .term-status-dot.alert { background: #ff4040; box-shadow: 0 0 7px rgba(255, 50, 50, 0.8); animation: term-badge-pulse 0.9s ease-in-out infinite; }
+  @keyframes term-dot-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  @keyframes term-badge-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  #term-sessions-container { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; flex: 1; min-height: 0; }
+  .term-session-card {
+    background: rgba(0, 15, 30, 0.9);
+    border: 1px solid rgba(255, 55, 55, 0.4);
+    border-radius: 5px; overflow: hidden;
+    box-shadow: 0 0 14px rgba(255, 50, 50, 0.1);
+    flex-shrink: 0;
+  }
+  .term-card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 5px 9px;
+    background: rgba(255, 50, 50, 0.1);
+    border-bottom: 1px solid rgba(255, 55, 55, 0.25);
+    font-size: 9px; letter-spacing: 0.08em; color: rgba(255, 140, 140, 0.85);
+  }
+  .term-alert-tag {
+    background: rgba(255, 50, 50, 0.25); border: 1px solid rgba(255, 60, 60, 0.45);
+    border-radius: 3px; padding: 1px 5px; font-size: 9px; color: #ff9999;
+  }
+  .term-prompt-preview {
+    padding: 7px 9px;
+    font-family: 'SF Mono', 'Menlo', monospace;
+    font-size: 9.5px; line-height: 1.55;
+    color: rgba(190, 230, 210, 0.85);
+    background: rgba(0, 5, 12, 0.75);
+    border-bottom: 1px solid rgba(0, 160, 200, 0.12);
+    white-space: pre; overflow-x: auto;
+    max-height: 90px; overflow-y: hidden;
+  }
+  .term-card-actions { display: flex; gap: 6px; padding: 7px 9px; }
+  .term-action-btn {
+    flex: 1; padding: 5px 6px; border-radius: 4px;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.04em;
+    cursor: pointer; border: 1px solid transparent; transition: all 0.14s;
+  }
+  .term-action-btn.yes { background: rgba(0, 170, 90, 0.18); border-color: rgba(0, 200, 110, 0.4); color: #66ddaa; }
+  .term-action-btn.yes:hover { background: rgba(0, 170, 90, 0.32); }
+  .term-action-btn.no { background: rgba(200, 45, 45, 0.18); border-color: rgba(220, 70, 70, 0.4); color: #ff9999; }
+  .term-action-btn.no:hover { background: rgba(200, 45, 45, 0.32); }
+  .term-action-btn.enter { background: rgba(0, 100, 175, 0.18); border-color: rgba(0, 155, 215, 0.4); color: #88ccee; }
+  .term-action-btn.enter:hover { background: rgba(0, 100, 175, 0.32); }
+  .term-action-btn:active { transform: scale(0.96); }
+  .term-action-btn:disabled { opacity: 0.38; cursor: default; transform: none; }
+  .term-idle-msg {
+    text-align: center; padding: 28px 12px;
+    color: rgba(90, 150, 175, 0.4); font-size: 10px; letter-spacing: 0.12em;
+  }
+
+  /* ── Finance ── */
+  #pane-finance { gap: 6px; }
+  .fin-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 5px 9px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    flex-shrink: 0;
+    font-size: 9px; letter-spacing: 0.1em;
+    color: var(--text-md);
+  }
+  .fin-time { font-size: 9px; color: var(--text-dim); font-family: 'SF Mono', monospace; }
+  .fin-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-faint);
+    border-radius: 9px;
+    padding: 9px 12px;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-shrink: 0;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .fin-card:hover { border-color: var(--border-accent); box-shadow: 0 0 8px var(--accent-dim); }
+  .fin-name { font-size: 11px; font-weight: 600; color: var(--text-hi); letter-spacing: 0.02em; }
+  .fin-sub  { font-size: 9px; color: var(--text-lo); font-family: 'SF Mono', monospace; letter-spacing: 0.04em; margin-top: 2px; }
+  /* 价格主数字用 accent 青绿, 与品牌色统一; 涨/跌的红绿是行情通用语言, 故保留不动 */
+  .fin-price { font-size: 15px; font-weight: 700; color: var(--accent-gold); font-family: 'SF Mono', monospace; text-align: right; }
+  .fin-change { font-size: 10px; font-family: 'SF Mono', monospace; text-align: right; margin-top: 2px; }
+  .fin-change.up   { color: rgba(80, 220, 110, 0.9); }
+  .fin-change.dn   { color: rgba(255, 90,  65, 0.9); }
+  .fin-change.flat { color: var(--text-dim); }
+  .fin-loading { text-align: center; padding: 32px 10px; color: var(--text-lo); font-size: 12px; }
+  .fin-err { color: var(--status-err); font-size: 10px; text-align: right; }
+</style>
+</head>
+<body>
+
+<div id="titlebar">
+  <button id="close-btn" onclick="window.petAPI.closePanel()"></button>
+  <div class="title" id="panel-title">小黄的面板</div>
+  <div style="width:11px"></div>
+</div>
+
+<div id="pet-status">
+  <div class="pet-mini-avatar" id="pet-mini-avatar">🐕</div>
+  <div class="pet-info">
+    <div class="pet-name-level" id="status-name">骷髅一号 · Lv.1</div>
+    <div class="xp-bar-wrap">
+      <div class="xp-bar-bg"><div class="xp-bar-fill" id="xp-bar" style="width:0%"></div></div>
+      <div class="xp-text" id="xp-text">0 / 100 XP</div>
+    </div>
+    <div id="weapon-strip" class="weapon-strip"></div>
+  </div>
+  <div class="mood-icon" id="mood-icon">😊</div>
+</div>
+
+<!-- 辅助功能权限警告横幅 — axTrusted=false 时显示, 永远不消失直到授权完成 -->
+<div id="ax-warning-banner" style="display:none;">
+  <span class="axw-icon">⚠</span>
+  <div class="axw-text">
+    <div class="axw-title">辅助功能未授权</div>
+    <div class="axw-sub">骷髅一号无法读取 Claude Code 等全屏 TUI 的内容, 终端确认提示<strong>完全检测不到</strong></div>
+  </div>
+  <button class="axw-btn" id="ax-open-settings">打开授权 ⤴</button>
+  <button class="axw-dismiss" id="ax-dismiss" title="本次会话隐藏">×</button>
+</div>
+
+<div id="tabs">
+  <div class="tab active" data-tab="chat">CHAT</div>
+  <div class="tab" data-tab="files">WORKFLOW</div>
+  <div class="tab" data-tab="terminal">YES BOT<span class="tab-badge" id="term-badge"></span></div>
+  <div class="tab" data-tab="windows">WINDOWS</div>
+  <div class="tab" data-tab="finance">MRKT</div>
+  <div class="tab" data-tab="todo">MISSION</div>
+  <div class="tab" data-tab="settings">CONFIG</div>
+</div>
+
+<div id="tab-content">
+
+  <!-- Chat -->
+  <div class="tab-pane active" id="pane-chat">
+    <div id="chat-main" class="hud-frame flex-fill">
+      <div class="hud-pill">CHAT CONSOLE</div>
+      <div id="chat-messages"></div>
+      <div id="chat-input-area">
+        <textarea id="chat-input" placeholder="和骷髅一号说点什么... (⌘↵ 发送)" rows="1"></textarea>
+        <button id="send-btn" title="发送 (⌘↵)">↑</button>
+      </div>
+    </div>
+    <div id="chat-side" class="hud-frame">
+      <div class="hud-pill">QUICK ORDERS</div>
+      <div class="qp-section-title">快捷指令</div>
+      <button class="qp-btn" data-prompt="今天天气怎么样？">☁ 今天天气</button>
+      <button class="qp-btn" data-prompt="帮我看下今天的日历有什么安排">📅 今日日程</button>
+      <button class="qp-btn" data-prompt="查一下昨天的新闻，挑3条重要的">📰 昨日要闻</button>
+      <div class="qp-section-title">AI 助手</div>
+      <button class="qp-btn" data-url="https://chatgpt.com">✨ ChatGPT</button>
+      <button class="qp-btn" data-url="https://chat.deepseek.com">🌊 DeepSeek</button>
+      <button class="qp-btn" data-url="https://chat.qwen.ai">🦅 千问</button>
+      <button class="qp-btn" data-url="https://www.doubao.com/chat">🫘 豆包</button>
+      <button class="qp-btn" data-url="https://nextgen-beta.ica.ibm.com/ica/chat">🔷 ICA</button>
+      <div class="qp-section-title">体育</div>
+      <button class="qp-btn" data-prompt="昨晚 CBA 总决赛比分和球员数据">🏀 CBA 战报</button>
+      <button class="qp-btn" data-prompt="昨天中超有什么比赛？比分多少？">⚽ 中超战报</button>
+      <button class="qp-btn" data-prompt="昨天英超有什么比赛？比分多少？">⚽ 英超战报</button>
+      <div class="qp-section-title">系统</div>
+      <button class="qp-btn" data-prompt="检查下我电脑磁盘和内存还剩多少？">💻 系统状态</button>
+      <div class="qp-section-title">AI 智能建议</div>
+      <button class="qp-btn" id="suggest-btn" onclick="getSuggestions()">✦ 分析电脑，获取建议</button>
+      <div id="suggestion-list"></div>
+    </div>
+  </div>
+
+  <!-- Todo / Reminders -->
+  <div class="tab-pane" id="pane-todo">
+    <div class="mission-grid">
+      <!-- 左栏: 清单 + 筛选 -->
+      <div class="mission-list-col hud-frame">
+        <div class="hud-pill">MISSION QUEUE</div>
+        <div class="todo-top-bar">
+          <span class="todo-list-label">📋 <span id="current-list-name">提醒事项</span></span>
+          <button class="refresh-btn" id="refresh-btn" onclick="loadReminders()" title="刷新">↻</button>
+        </div>
+        <div class="todo-filters">
+          <button class="filter-btn" data-filter="all">全部</button>
+          <button class="filter-btn active" data-filter="pending">待完成</button>
+          <button class="filter-btn" data-filter="done">已完成</button>
+        </div>
+        <div class="todo-stats" id="todo-stats"></div>
+        <div id="todo-list"></div>
+      </div>
+      <!-- 右栏: 新建任务 -->
+      <div class="mission-add-col">
+        <div class="mission-add-card hud-frame">
+          <div class="hud-pill">NEW MISSION</div>
+          <div class="mission-card-title">新建任务</div>
+          <div class="todo-add-row">
+            <input class="todo-input" id="todo-input" placeholder="任务内容... (⌘↵ 录入)" />
+            <button class="add-todo-btn" id="add-todo-btn">↑</button>
+          </div>
+          <div class="due-picker" id="add-due-picker"></div>
+          <div class="mission-add-hint">提示: 双击列表中的任务可编辑文字与时间</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Workflow (原 FILES, AI 智能建议已移到 CHAT 侧栏) -->
+  <div class="tab-pane" id="pane-files">
+    <div class="hud-frame">
+      <div class="hud-pill">WORKFLOWS</div>
+      <div class="section-header wf-section-header">流程定制 <button class="wf-add-btn" onclick="wfShowCreate()">+ 新建</button></div>
+      <div class="scan-hint">定制AI工作流，一键执行你的专属任务</div>
+      <div id="wf-form-wrap" class="wf-form-wrap">
+        <div class="wf-form-title" id="wf-form-title">新建流程</div>
+        <input class="wf-input" id="wf-name-input" placeholder="流程名称（如：整理桌面）" maxlength="30">
+        <textarea class="wf-textarea" id="wf-prompt-input" placeholder="AI提示词（如：请帮我分析当前桌面文件并给出整理建议）" rows="3"></textarea>
+        <div class="wf-form-btns">
+          <button class="wf-save-btn" id="wf-save-btn" onclick="wfSave()">保存</button>
+          <button class="wf-cancel-btn" onclick="wfHideForm()">取消</button>
+        </div>
+      </div>
+      <div id="wf-list"></div>
+    </div>
+  </div>
+
+  <!-- Terminal Monitor -->
+  <div class="tab-pane" id="pane-terminal">
+    <div class="hud-frame flex-fill">
+      <div class="hud-pill">TERMINAL MONITOR</div>
+      <div class="term-header">
+        <span><span class="term-status-dot" id="term-status-dot"></span><span id="term-status-text">初始化中...</span></span>
+        <span style="display:flex;gap:4px">
+          <button class="refresh-btn" id="term-sound-btn" onclick="termToggleAlertSound()" title="警报音：开">🔔</button>
+          <button class="refresh-btn" onclick="termPollNow()" title="立即扫描">↻</button>
+          <button class="refresh-btn" id="term-diag-btn" onclick="termToggleDiag()" title="诊断：显示所有会话原始内容">⚙</button>
+        </span>
+      </div>
+      <div id="term-ax-hint" style="display:none;padding:6px 10px;font-size:10px;color:rgba(255,200,80,0.85);background:rgba(255,180,0,0.08);border-bottom:1px solid rgba(255,180,0,0.15)">
+        ⚠ 需要辅助功能权限才能读取终端当前屏幕（Claude Code等全屏UI）。请前往
+        <b>系统设置 → 隐私与安全 → 辅助功能</b>，将本应用加入列表并启用。
+      </div>
+      <div id="term-sessions-container">
+        <div class="term-idle-msg">[ 点击标签页开始监控 ]</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Windows manager — 列出 macOS 当前所有可见应用 + 它们的窗口 -->
+  <div class="tab-pane" id="pane-windows">
+    <div class="hud-frame flex-fill">
+      <div class="hud-pill">WINDOW MANAGER</div>
+      <div class="wins-bar" style="background:transparent;border:none;padding:0 0 6px;">
+        <span style="font-size:9px;letter-spacing:0.12em;color:var(--text-lo)">◈ ACTIVE APPS ◈</span>
+        <button class="refresh-btn" id="wins-refresh-btn" onclick="loadWindows()" title="刷新">⟳</button>
+      </div>
+      <div id="wins-list" style="flex:1; overflow-y:auto; min-height:0;"></div>
+    </div>
+  </div>
+
+  <!-- Finance -->
+  <div class="tab-pane" id="pane-finance">
+    <div class="hud-frame flex-fill">
+      <div class="hud-pill">MARKET DATA</div>
+      <div class="fin-header" style="background:transparent;border:none;padding:0 0 6px;">
+        <span style="font-size:9px;letter-spacing:0.12em;color:var(--text-lo)">◈ LIVE QUOTES ◈</span>
+        <span style="display:flex;align-items:center;gap:6px">
+          <span id="fin-time" class="fin-time">–</span>
+          <button class="refresh-btn" id="fin-refresh-btn" onclick="financeRefresh()" title="刷新数据">↻</button>
+        </span>
+      </div>
+      <div id="fin-grid" style="flex:1; overflow-y:auto; min-height:0;"><div class="fin-loading">◌ 点击标签页加载行情...</div></div>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="tab-pane" id="pane-settings">
+    <div class="hud-frame">
+      <div class="hud-pill">UNIT CONFIG</div>
+    <div class="setting-section">机体设置</div>
+    <div class="setting-row">
+      <div class="setting-label">机体涂装 (UNIT EMBLEM)</div>
+      <div class="avatar-upload-wrap">
+        <div class="avatar-preview-lg" id="avatar-preview-lg"></div>
+        <div style="display:flex;flex-direction:column;gap:7px;">
+          <button class="avatar-upload-btn" onclick="document.getElementById('avatar-file-input').click()">📷 从相册选择</button>
+          <input type="file" id="avatar-file-input" accept="image/*" style="display:none" onchange="handleAvatarFile(this)">
+        </div>
+      </div>
+    </div>
+    <div style="height:10px"></div>
+    <div class="setting-row">
+      <div class="setting-label">机体代号 (UNIT DESIGNATION)</div>
+      <input class="setting-input" id="pet-name-input" type="text" placeholder="VF-1S" />
+    </div>
+    <button class="save-btn" onclick="savePetName()">确认代号</button>
+    <div class="setting-success" id="name-success">✓ 保存成功</div>
+
+    <div style="height:14px"></div>
+    <div class="setting-section">休息提醒</div>
+    <div class="setting-row" style="margin-bottom:8px">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; color:var(--text-md);">
+          <input type="checkbox" id="break-reminder-enabled" onchange="saveBreakReminder()" style="cursor:pointer">
+          启用骷髅一号飞到屏幕中央提示休息
+        </label>
+      </div>
+      <div style="display:flex; align-items:center; gap:7px; margin-top:8px;">
+        <span style="font-size:12px; color:var(--text-md);">间隔</span>
+        <input class="setting-input" id="break-reminder-interval" type="number" min="1" max="720" step="1"
+               style="width:80px; flex:0 0 auto;" onchange="saveBreakReminder()" />
+        <span style="font-size:12px; color:var(--text-md);">分钟</span>
+        <button class="save-btn" style="margin-left:auto; padding:5px 12px;" onclick="testBreakReminder()">立即测试</button>
+      </div>
+      <div class="setting-note" style="margin-top:6px;">骷髅一号会变形飞到屏幕中央, 语音提示驾驶员起身活动, 念完后飞回原位</div>
+    </div>
+
+    <div style="height:14px"></div>
+    <div class="setting-section">边沿巡航</div>
+    <div class="setting-row" style="margin-bottom:8px">
+      <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; color:var(--text-md);">
+        <input type="checkbox" id="edge-patrol-enabled" onchange="saveEdgePatrol()" style="cursor:pointer">
+        启用待机边沿巡航
+      </label>
+      <div class="setting-note" style="margin-top:6px;">空闲时 VF-1 沿屏幕四角顺时针缓慢飞行, 横边走 Fighter (机头对齐航向), 竖边走 Gerwalk (悬停)。被告警/拖动/休息提醒打断时自动让位</div>
+    </div>
+
+    <div style="height:14px"></div>
+    <div class="setting-section">提醒事项列表</div>
+    <div class="setting-row" style="margin-bottom:8px">
+      <div class="setting-label">读取的列表名称（留空则使用默认列表）</div>
+      <div style="display:flex; gap:7px;">
+        <input class="setting-input" id="reminder-list-input" type="text" placeholder="例如：工作、提醒事项" style="flex:1" />
+        <button class="save-btn" onclick="saveReminderList()">保存</button>
+      </div>
+    </div>
+    <div id="reminder-lists-hint" class="setting-note"></div>
+
+    </div><!-- /PET CONFIG hud-frame -->
+
+    <div class="hud-frame">
+      <div class="hud-pill">AI BACKEND</div>
+    <div class="setting-section">AI 后台</div>
+
+    <div class="provider-grid">
+      <div class="provider-card" data-provider="qwen" onclick="selectProvider('qwen')">
+        <div class="p-icon">🦅</div>
+        <div class="p-name">千问</div>
+        <div class="p-model">qwen-plus</div>
+      </div>
+      <div class="provider-card" data-provider="deepseek" onclick="selectProvider('deepseek')">
+        <div class="p-icon">🌊</div>
+        <div class="p-name">DeepSeek</div>
+        <div class="p-model">deepseek-chat</div>
+      </div>
+      <div class="provider-card" data-provider="doubao" onclick="selectProvider('doubao')">
+        <div class="p-icon">🫘</div>
+        <div class="p-name">豆包</div>
+        <div class="p-model">doubao-1.5-pro-32k</div>
+      </div>
+      <div class="provider-card" data-provider="ollama" onclick="selectProvider('ollama')">
+        <div class="p-icon">🦙</div>
+        <div class="p-name">Ollama</div>
+        <div class="p-model">本地模型</div>
+      </div>
+    </div>
+
+    <div class="setting-section">API Keys <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;opacity:0.6">(仅本地存储)</span></div>
+
+    <div class="key-section">
+      <div class="setting-label" style="margin-bottom:0">🦅 千问 (DashScope)</div>
+      <div class="key-row">
+        <input class="setting-input" id="key-qwen" type="password" placeholder="sk-..." />
+        <button class="key-save-btn" onclick="saveKey('qwen')">保存</button>
+      </div>
+      <div class="key-status" id="status-qwen"></div>
+    </div>
+
+    <div class="key-section">
+      <div class="setting-label" style="margin-bottom:0">🌊 DeepSeek</div>
+      <div class="key-row">
+        <input class="setting-input" id="key-deepseek" type="password" placeholder="sk-..." />
+        <button class="key-save-btn" onclick="saveKey('deepseek')">保存</button>
+      </div>
+      <div class="key-status" id="status-deepseek"></div>
+    </div>
+
+    <div class="key-section">
+      <div class="setting-label" style="margin-bottom:0">🫘 豆包 (火山引擎 Ark)</div>
+      <div class="key-row">
+        <input class="setting-input" id="key-doubao" type="password" placeholder="ARK_API_KEY..." />
+        <button class="key-save-btn" onclick="saveKey('doubao')">保存</button>
+      </div>
+      <div class="key-status" id="status-doubao"></div>
+    </div>
+
+    <div class="key-section">
+      <div class="setting-label" style="margin-bottom:0">🦙 Ollama（无需 Key）</div>
+      <div class="key-status unset" style="margin-top:4px">确保本地已运行 ollama serve，默认连接 localhost:11434</div>
+    </div>
+
+    <div style="height:14px"></div>
+    <div class="setting-section">网页搜索（实时信息）</div>
+
+    <div class="key-section">
+      <div class="setting-label" style="margin-bottom:0">🔍 Metaso 搜索 API Key</div>
+      <div class="key-row">
+        <input class="setting-input" id="key-metaso" type="password" placeholder="mk-..." />
+        <button class="key-save-btn" onclick="saveKey('metaso')">保存</button>
+      </div>
+      <div class="key-status" id="status-metaso"></div>
+      <div class="setting-note" style="margin-top:5px">用于回答赛事/新闻/股价等实时问题。通过 metaso.cn/api/mcp 接口搜索互联网。</div>
+    </div>
+
+    </div><!-- /AI BACKEND hud-frame -->
+
+    <div style="height:10px"></div>
+    <div class="setting-note" style="text-align:center;color:rgba(78,148,175,0.38)">聊天+5XP · 完成任务+15XP · 添加任务+2XP · 清理文件+10XP</div>
+    <div style="height:16px"></div>
+  </div>
+
+</div>
+
+<!-- File Manager Overlay -->
+<div id="file-manager-overlay">
+  <div id="fm-header">
+    <div id="fm-title">文件清理</div>
+    <div style="display:flex;gap:6px;align-items:center">
+      <button class="fm-sel-btn" onclick="fmFiles=[];fmSelected.clear();fmScan()" style="font-size:10px;padding:2px 8px">↻ 重扫</button>
+      <button id="fm-close-btn" onclick="closeFM()">×</button>
+    </div>
+  </div>
+  <div id="fm-filters">
+    <button class="fm-filter-btn active" data-fm-filter="all" onclick="fmSetFilter('all')">全部</button>
+    <button class="fm-filter-btn" data-fm-filter="Desktop" onclick="fmSetFilter('Desktop')">桌面</button>
+    <button class="fm-filter-btn" data-fm-filter="Downloads" onclick="fmSetFilter('Downloads')">下载</button>
+  </div>
+  <div id="fm-toolbar">
+    <button class="fm-sel-btn" onclick="fmSelectAll()">全选</button>
+    <button class="fm-sel-btn" onclick="fmDeselectAll()">取消</button>
+    <span id="fm-count">未扫描</span>
+    <button id="fm-delete-btn" onclick="fmDeleteSelected()" disabled>移至废纸篓</button>
+  </div>
+  <div id="fm-list"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let state = null;
+let reminders = [];
+let renderedReminders = [];
+let reminderFilter = 'pending';
+let isLoadingReminders = false;
+let isChatting = false;
+let currentAvatar = '🐕';
+
+function setAvatarContent(el, avatar) {
+  if (!el) return;
+  if (avatar && avatar.startsWith('data:')) {
+    el.innerHTML = `<img src="${avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+  } else {
+    el.innerHTML = '';
+    el.textContent = avatar || '🐕';
+  }
+}
+
+const moodMap = { happy: '😊', excited: '🎉', thinking: '🤔', sleeping: '😴', neutral: '😐' };
+const XP_THRESHOLDS = [0, 100, 300, 600, 1000, 1500, 2200, 3100, 4300, 6000];
+
+function calcXPProgress(pet) {
+  const xp = pet.xp || 0;
+  const level = pet.level || 1;
+  const maxLevel = XP_THRESHOLDS.length;
+  if (level >= maxLevel) return { current: xp, needed: XP_THRESHOLDS[maxLevel - 1], percent: 100 };
+  const currentThreshold = XP_THRESHOLDS[level - 1] || 0;
+  const nextThreshold = XP_THRESHOLDS[level];
+  const progress = xp - currentThreshold;
+  const needed = nextThreshold - currentThreshold;
+  return { current: xp, needed: nextThreshold, percent: Math.floor((progress / needed) * 100) };
+}
+
+async function init() {
+  state = await window.petAPI.getState();
+  currentAvatar = state.pet.avatar || '🐕';
+  setAvatarContent(document.getElementById('pet-mini-avatar'), currentAvatar);
+  updateStatus(state.pet, calcXPProgress(state.pet));
+
+  const listName = state.reminderList || '';
+  document.getElementById('current-list-name').textContent = listName || '提醒事项';
+  document.getElementById('reminder-list-input').value = listName;
+
+  document.getElementById('pet-name-input').value = state.pet.name;
+  document.getElementById('chat-input').placeholder = `和${state.pet.name}说点什么... (⌘↵ 发送)`;
+  initSettings();
+  document.getElementById('panel-title').textContent = `${state.pet.name}的面板`;
+
+  addPetMessage(`VF-1S 骷髅一号面板已启动。${state.pet.name} 随时待命，请下达指令。`);
+  loadWorkflows();
+
+  window.petAPI.onPetUpdate((data) => {
+    if (data.pet) updateStatus(data.pet, data.xpProgress);
+    if (data.aiProvider) { state.aiProvider = data.aiProvider; renderProviderCards(data.aiProvider); }
+    if (data.reminderList !== undefined) {
+      state.reminderList = data.reminderList;
+      document.getElementById('current-list-name').textContent = data.reminderList || '提醒事项';
+    }
+  });
+}
+
+function updateStatus(pet, xpProgress) {
+  if (!pet) return;
+  state = state || {};
+  state.pet = pet;
+  document.getElementById('status-name').textContent = `${pet.name} · Lv.${pet.level}`;
+  document.getElementById('mood-icon').textContent = moodMap[pet.mood] || '😊';
+  document.getElementById('panel-title').textContent = `◈ ${pet.name} UNIT ◈`;
+  document.getElementById('chat-input').placeholder = `[CHAT] 向 ${pet.name} 发送指令... (⌘↵)`;
+  if (pet.avatar && pet.avatar !== currentAvatar) {
+    currentAvatar = pet.avatar;
+    setAvatarContent(document.getElementById('pet-mini-avatar'), pet.avatar);
+  }
+
+  if (xpProgress) {
+    document.getElementById('xp-bar').style.width = xpProgress.percent + '%';
+    document.getElementById('xp-text').textContent = `${xpProgress.current} / ${xpProgress.needed} XP`;
+  }
+
+  renderWeaponStrip(pet.level);
+}
+
+function renderWeaponStrip(level) {
+  const strip = document.getElementById('weapon-strip');
+  if (!strip) return;
+  const weapons = [
+    { lv: 3,  icon: '🚀', label: 'AMM-1 反舰导弹',  activeAt: null },
+    { lv: 5,  icon: '🛡️', label: 'Super Pack 燃料舱', activeAt: 6 },
+    { lv: 7,  icon: '🔫', label: 'GU-11 机炮',      activeAt: 8 },
+    { lv: 9,  icon: '⚡', label: 'Reaction Missile', activeAt: 10 },
+    { lv: 10, icon: '💀', label: '骷髅中队队长',     activeAt: 10 },
+  ];
+  strip.innerHTML = weapons.map(w => {
+    let cls, display;
+    if (level >= w.lv) {
+      cls = (w.activeAt && level >= w.activeAt) ? 'active' : 'unlocked';
+      display = `${w.icon} ${w.label}`;
+    } else {
+      cls = 'locked';
+      display = `▪ Lv${w.lv}`;
+    }
+    return `<span class="weapon-chip ${cls}">${display}</span>`;
+  }).join('');
+}
+
+// ── Tabs ──
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('pane-' + tab.dataset.tab).classList.add('active');
+    if (tab.dataset.tab === 'todo' && reminders.length === 0) loadReminders();
+    if (tab.dataset.tab === 'settings') { initReminderLists(); loadBreakReminder(); loadEdgePatrol(); }
+    if (tab.dataset.tab === 'windows') loadWindows();
+    if (tab.dataset.tab === 'terminal') { termActive = true; termPollNow(); }
+    else termActive = false;
+    if (tab.dataset.tab === 'finance') { financeTabActive = true; financeLoad(); }
+    else financeTabActive = false;
+  });
+});
+
+// ── Chat ──
+function makeCopyBtn(getText) {
+  const btn = document.createElement('button');
+  btn.className = 'msg-copy';
+  btn.textContent = '复制';
+  btn.onclick = () => {
+    navigator.clipboard.writeText(getText()).then(() => {
+      btn.textContent = '✓';
+      setTimeout(() => { btn.textContent = '复制'; }, 1200);
+    });
+  };
+  return btn;
+}
+
+function addPetMessage(text) {
+  const msgs = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = 'msg pet';
+  const wrap = document.createElement('div');
+  wrap.className = 'msg-wrap';
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble md';
+  bubble.innerHTML = renderMarkdown(text);
+  wrap.appendChild(bubble);
+  // 复制按钮还是给原文 (markdown 源码), 不是渲染后的 HTML
+  wrap.appendChild(makeCopyBtn(() => text));
+  const avatar = document.createElement('div');
+  avatar.className = 'msg-avatar';
+  setAvatarContent(avatar, currentAvatar);
+  div.appendChild(avatar);
+  div.appendChild(wrap);
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function addUserMessage(text) {
+  const msgs = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = 'msg user';
+  const wrap = document.createElement('div');
+  wrap.className = 'msg-wrap';
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  bubble.textContent = text;
+  wrap.appendChild(bubble);
+  wrap.appendChild(makeCopyBtn(() => text));
+  const avatar = document.createElement('div');
+  avatar.className = 'msg-avatar';
+  avatar.style.cssText = 'font-size:10px;color:#98d4eb;font-weight:600';
+  avatar.textContent = '我';
+  div.appendChild(wrap);
+  div.appendChild(avatar);
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function addTypingIndicator() {
+  const msgs = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = 'msg pet';
+  div.id = 'typing-indicator';
+  const taAvatar = document.createElement('div');
+  taAvatar.className = 'msg-avatar';
+  setAvatarContent(taAvatar, currentAvatar);
+  const taBubble = document.createElement('div');
+  taBubble.className = 'msg-bubble typing-indicator';
+  taBubble.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
+  div.appendChild(taAvatar);
+  div.appendChild(taBubble);
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function removeTypingIndicator() {
+  const el = document.getElementById('typing-indicator');
+  if (el) el.remove();
+}
+
+async function sendChat() {
+  if (isChatting) return;
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+
+  input.value = '';
+  input.style.height = 'auto';
+  addUserMessage(text);
+  addTypingIndicator();
+  isChatting = true;
+  document.getElementById('send-btn').disabled = true;
+
+  const result = await window.petAPI.chat(text);
+  removeTypingIndicator();
+  isChatting = false;
+  document.getElementById('send-btn').disabled = false;
+
+  if (result.error) {
+    addPetMessage('系统异常——' + result.error);
+  } else {
+    addPetMessage(result.reply);
+    if (result.level > (state.pet?.level || 1)) {
+      setTimeout(() => addPetMessage(`⚡ 系统升级完成——${state.pet.name} 已进化至 Lv.${result.level}，战斗力提升！`), 500);
+    }
+    state.pet = Object.assign(state.pet || {}, { xp: result.xp, level: result.level });
+  }
+}
+
+document.getElementById('send-btn').addEventListener('click', sendChat);
+document.getElementById('chat-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.metaKey) { e.preventDefault(); sendChat(); }
+});
+document.getElementById('chat-input').addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 80) + 'px';
+});
+
+// 快捷指令侧栏:
+//   data-url   → 直接调系统默认浏览器打开 (打开 X 类按钮, 不走 AI, 零延迟)
+//   data-prompt → 灌到输入框并发起 AI 对话 (信息查询类按钮)
+document.querySelectorAll('#chat-side .qp-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const url = btn.dataset.url;
+    if (url) { window.petAPI.openExternal(url); return; }
+    const prompt = btn.dataset.prompt;
+    if (!prompt || isChatting) return;
+    const input = document.getElementById('chat-input');
+    input.value = prompt;
+    sendChat();
+  });
+});
+
+// ── Reminders ──
+async function loadReminders() {
+  if (isLoadingReminders) return;
+  isLoadingReminders = true;
+  const btn = document.getElementById('refresh-btn');
+  if (btn) btn.classList.add('spinning');
+
+  const result = await window.petAPI.getReminders();
+  isLoadingReminders = false;
+  if (btn) btn.classList.remove('spinning');
+
+  if (result.error) {
+    document.getElementById('todo-list').innerHTML = `<div class="todo-empty">⚠️ 无法读取提醒事项<br><br>请在系统设置 → 隐私与安全性 → 自动化<br>中允许此应用访问"提醒事项"</div>`;
+    document.getElementById('todo-stats').textContent = '';
+    return;
+  }
+
+  reminders = result.reminders;
+  renderReminders();
+}
+
+function renderReminders() {
+  const filtered = reminders.filter(r => {
+    if (reminderFilter === 'pending') return !r.done;
+    if (reminderFilter === 'done') return r.done;
+    return true;
+  });
+
+  renderedReminders = filtered;
+
+  const total = reminders.length;
+  const done = reminders.filter(r => r.done).length;
+  document.getElementById('todo-stats').textContent = total ? `共 ${total} 项 · 已完成 ${done} 项` : '';
+
+  const list = document.getElementById('todo-list');
+  if (!filtered.length) {
+    list.innerHTML = `<div class="todo-empty">${reminderFilter === 'done' ? '还没有完成的任务' : '没有待办事项，来添加一个吧~'}</div>`;
+    return;
+  }
+
+  const now = new Date();
+  list.innerHTML = filtered.map((r, i) => {
+    let dueHtml = '';
+    if (r.dueDate) {
+      const d = new Date(r.dueDate);
+      const overdue = !r.done && d < now;
+      const label = d.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      dueHtml = `<div class="todo-due ${overdue ? 'overdue' : ''}">⏱ ${label}${overdue ? ' 已超时' : ''}</div>`;
+    }
+    return `
+    <div class="todo-item ${r.done ? 'done' : ''}" id="ritem-${i}" data-text="${escHtml(r.text)}">
+      <div class="todo-check ${r.done ? 'checked' : ''}" onclick="completeReminder(${i})"></div>
+      <div class="todo-text-wrap">
+        <div class="todo-text" id="rtext-${i}">${escHtml(r.text)}</div>
+        ${dueHtml}
+      </div>
+      ${!r.done ? `<button class="todo-edit-btn" onclick="startEditReminder(${i})" title="编辑">✏</button>` : ''}
+      <button class="todo-del" onclick="deleteReminder(${i})">×</button>
+    </div>`;
+  }).join('');
+}
+
+// ── 芯片式 due-picker (add + edit 共用) ────────────────────────
+// dateChip: 0=今天, 1=明天, 2=后天, 'weekend'=最近周六, 'nextweek'=下周一
+// timeChip: 'HH:MM' 字符串
+// exactIso: 'YYYY-MM-DDTHH:MM' (datetime-local 原生值, 一旦设置则覆盖 chip)
+function chipToDate(chip) {
+  const d = new Date();
+  d.setSeconds(0, 0);
+  if (chip === 0 || chip === 1 || chip === 2) {
+    d.setDate(d.getDate() + Number(chip));
+  } else if (chip === 'weekend') {
+    const day = d.getDay();
+    const offset = day === 6 ? 0 : day === 0 ? 6 : 6 - day;
+    d.setDate(d.getDate() + offset);
+  } else if (chip === 'nextweek') {
+    const day = d.getDay();
+    const offset = ((1 - day) + 7) % 7 || 7;
+    d.setDate(d.getDate() + offset);
+  }
+  return d;
+}
+
+const TIME_CHIP_LABEL = { '09:00': '上午', '12:00': '中午', '15:00': '下午', '18:00': '傍晚', '20:00': '晚上' };
+const DATE_CHIP_LABEL = { 0: '今天', 1: '明天', 2: '后天', 'weekend': '周末', 'nextweek': '下周一' };
+
+// 把 picker 的当前选择折算成 ISO 字符串 (no-tz, like datetime-local 的格式), 没选返回 null
+function pickerToIso(state) {
+  if (state.exactIso) return state.exactIso;
+  if (state.dateChip == null) return null;
+  const d = chipToDate(state.dateChip);
+  const [hh, mm] = (state.timeChip || '09:00').split(':').map(Number);
+  d.setHours(hh, mm, 0, 0);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+}
+
+function isoToPickerState(iso) {
+  if (!iso) return { dateChip: null, timeChip: null, exactIso: null, exactVisible: false };
+  // 尝试还原成芯片组合: 看日期是不是今天/明天/后天/周末/下周一, 时间是不是 chip 时段
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return { dateChip: null, timeChip: null, exactIso: null, exactVisible: false };
+  const today = new Date(); today.setHours(0,0,0,0);
+  const target = new Date(d); target.setHours(0,0,0,0);
+  const diffDays = Math.round((target - today) / 86400000);
+  const hh = String(d.getHours()).padStart(2,'0'), mm = String(d.getMinutes()).padStart(2,'0');
+  const timeStr = `${hh}:${mm}`;
+  const timeChip = TIME_CHIP_LABEL[timeStr] ? timeStr : null;
+
+  let dateChip = null;
+  if ([0,1,2].includes(diffDays)) dateChip = diffDays;
+  else {
+    // weekend / nextweek 可还原?
+    const weekendDate = chipToDate('weekend'); weekendDate.setHours(0,0,0,0);
+    const nextWeekDate = chipToDate('nextweek'); nextWeekDate.setHours(0,0,0,0);
+    if (target.getTime() === weekendDate.getTime()) dateChip = 'weekend';
+    else if (target.getTime() === nextWeekDate.getTime()) dateChip = 'nextweek';
+  }
+
+  // 时间不在 chip 列表 → 用精确模式回写; 否则可以纯 chip 表达
+  const useExact = !timeChip || dateChip == null;
+  if (useExact) {
+    // 构造 datetime-local 值
+    const pad = n => String(n).padStart(2,'0');
+    const exactIso = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return { dateChip, timeChip, exactIso, exactVisible: true };
+  }
+  return { dateChip, timeChip, exactIso: null, exactVisible: false };
+}
+
+function formatPreview(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const today = new Date(); today.setHours(0,0,0,0);
+  const target = new Date(d); target.setHours(0,0,0,0);
+  const diffDays = Math.round((target - today) / 86400000);
+  const dateLabel = diffDays === 0 ? '今天' : diffDays === 1 ? '明天' : diffDays === 2 ? '后天'
+    : d.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', weekday: 'short' });
+  const hh = String(d.getHours()).padStart(2,'0'), mm = String(d.getMinutes()).padStart(2,'0');
+  return `${dateLabel} ${hh}:${mm}`;
+}
+
+// 给容器装一套芯片 picker. 返回一个 controller: { getIso(), setIso(iso) }
+function mountDuePicker(container, opts = {}) {
+  const compact = !!opts.compact;
+  if (compact) container.classList.add('compact');
+  let state = isoToPickerState(opts.initialIso || null);
+
+  function render() {
+    const dateChips = [0,1,2,'weekend','nextweek'].map(k => {
+      const active = state.dateChip === k && !state.exactIso ? 'active' : '';
+      return `<button type="button" class="due-chip ${active}" data-date="${k}">${DATE_CHIP_LABEL[k]}</button>`;
+    }).join('');
+    const timeChips = Object.entries(TIME_CHIP_LABEL).map(([k, label]) => {
+      const active = state.timeChip === k && !state.exactIso ? 'active' : '';
+      return `<button type="button" class="due-chip ${active}" data-time="${k}">${label}</button>`;
+    }).join('');
+    const exactBtnActive = state.exactVisible || state.exactIso ? 'active' : '';
+    const iso = pickerToIso(state);
+    const preview = iso ? formatPreview(iso) : '未设置截止';
+    const previewClass = iso ? '' : 'empty';
+    const exactInputHtml = state.exactVisible
+      ? `<input class="due-exact-input" type="datetime-local" value="${state.exactIso || ''}" />`
+      : '';
+
+    container.innerHTML = `
+      <div class="due-chips">
+        <span class="due-chip-label">日期</span>
+        ${dateChips}
+        <button type="button" class="due-chip mode-btn ${exactBtnActive}" data-mode="exact" title="精确日期/时间">精确…</button>
+      </div>
+      <div class="due-chips">
+        <span class="due-chip-label">时段</span>
+        ${timeChips}
+      </div>
+      ${exactInputHtml}
+      <div class="due-preview ${previewClass}">
+        <span>${iso ? '⏱ ' : ''}${preview}</span>
+        ${iso ? `<button type="button" class="due-preview-clear" title="清除">×</button>` : ''}
+      </div>
+    `;
+    wire();
+  }
+
+  function wire() {
+    container.querySelectorAll('[data-date]').forEach(b => b.addEventListener('click', () => {
+      const v = b.dataset.date;
+      const key = (v === 'weekend' || v === 'nextweek') ? v : Number(v);
+      state.dateChip = (state.dateChip === key) ? null : key;
+      // 切回 chip 模式
+      state.exactIso = null; state.exactVisible = false;
+      render();
+    }));
+    container.querySelectorAll('[data-time]').forEach(b => b.addEventListener('click', () => {
+      const v = b.dataset.time;
+      state.timeChip = state.timeChip === v ? null : v;
+      state.exactIso = null; state.exactVisible = false;
+      render();
+    }));
+    const modeBtn = container.querySelector('[data-mode="exact"]');
+    if (modeBtn) modeBtn.addEventListener('click', () => {
+      state.exactVisible = !state.exactVisible;
+      if (!state.exactVisible) state.exactIso = null;
+      else if (!state.exactIso) {
+        // 默认填当前 chip 折算的值, 没有就给一小时后整点
+        const fallback = pickerToIso(state) || (() => {
+          const d = new Date(); d.setMinutes(0, 0, 0); d.setHours(d.getHours() + 1);
+          const pad = n => String(n).padStart(2,'0');
+          return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        })();
+        state.exactIso = fallback;
+      }
+      render();
+    });
+    const exactInput = container.querySelector('.due-exact-input');
+    if (exactInput) exactInput.addEventListener('input', () => {
+      state.exactIso = exactInput.value || null;
+      // 同步刷预览, 但保留 input 焦点; 重渲染会 blur, 所以只刷预览那块
+      const iso = pickerToIso(state);
+      const previewEl = container.querySelector('.due-preview');
+      if (previewEl) {
+        if (iso) {
+          previewEl.classList.remove('empty');
+          previewEl.innerHTML = `<span>⏱ ${formatPreview(iso)}</span><button type="button" class="due-preview-clear" title="清除">×</button>`;
+          previewEl.querySelector('.due-preview-clear').addEventListener('click', () => {
+            state = { dateChip: null, timeChip: null, exactIso: null, exactVisible: false };
+            render();
+          });
+        } else {
+          previewEl.classList.add('empty');
+          previewEl.innerHTML = `<span>未设置截止</span>`;
+        }
+      }
+    });
+    const clearBtn = container.querySelector('.due-preview-clear');
+    if (clearBtn) clearBtn.addEventListener('click', () => {
+      state = { dateChip: null, timeChip: null, exactIso: null, exactVisible: false };
+      render();
+    });
+  }
+
+  render();
+
+  return {
+    getIso: () => pickerToIso(state),
+    setIso: (iso) => { state = isoToPickerState(iso); render(); },
+    reset: () => { state = { dateChip: null, timeChip: null, exactIso: null, exactVisible: false }; render(); }
+  };
+}
+
+const addDuePicker = mountDuePicker(document.getElementById('add-due-picker'));
+
+document.getElementById('add-todo-btn').addEventListener('click', async () => {
+  const input = document.getElementById('todo-input');
+  const text = input.value.trim();
+  if (!text) return;
+  const dueDate = addDuePicker.getIso();
+  input.value = '';
+  addDuePicker.reset();
+  const result = await window.petAPI.addReminder(text, dueDate);
+  if (result.error) { showToast('添加失败：' + result.error); return; }
+  reminders.unshift({ id: result.id, text, done: false, dueDate: dueDate ? new Date(dueDate).toISOString() : null });
+  renderReminders();
+  showToast('+2 XP · 任务已录入');
+});
+
+document.getElementById('todo-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.metaKey) { e.preventDefault(); document.getElementById('add-todo-btn').click(); }
+});
+
+async function completeReminder(i) {
+  const r = renderedReminders[i];
+  if (!r || r.done) return;
+  const result = await window.petAPI.completeReminder(r.id);
+  if (result.error) { showToast('操作失败：' + result.error); return; }
+  const reminder = reminders.find(x => x.id === r.id);
+  if (reminder) reminder.done = true;
+  renderReminders();
+  showToast('+15 XP 完成任务！🎉');
+}
+
+async function deleteReminder(i) {
+  const r = renderedReminders[i];
+  if (!r) return;
+  const result = await window.petAPI.deleteReminder(r.id);
+  if (result.error) { showToast('删除失败：' + result.error); return; }
+  reminders = reminders.filter(x => x.id !== r.id);
+  renderReminders();
+}
+
+// 每个 edit 行有自己的 picker controller, 用 reminder.id 索引
+const _editPickers = new Map();
+// 记录 due 是否被修改过 — 没动则不传 dueDate (让后端不动时间), 否则传新值
+const _editDueTouched = new Set();
+
+function startEditReminder(i) {
+  const r = renderedReminders[i];
+  if (!r) return;
+  const item = document.getElementById('ritem-' + i);
+  const textEl = document.getElementById('rtext-' + i);
+  const dueEl = item.querySelector('.todo-due');
+  const editBtn = item.querySelector('.todo-edit-btn');
+
+  textEl.style.display = 'none';
+  if (dueEl) dueEl.style.display = 'none';
+  if (editBtn) editBtn.style.display = 'none';
+
+  // 改成竖排: 文本输入 + due-picker + 操作按钮一行
+  const wrap = textEl.parentNode; // .todo-text-wrap
+  const container = document.createElement('div');
+  container.id = 'edit-container-r-' + i;
+  container.style.cssText = 'display:flex; flex-direction:column; gap:5px; flex:1; min-width:0;';
+  container.innerHTML = `
+    <input class="todo-edit-input" id="edit-input-r-${i}" type="text" />
+    <div class="due-picker compact" id="edit-due-r-${i}"></div>
+    <div style="display:flex; gap:4px; justify-content:flex-end;">
+      <button class="todo-edit-save" onclick="saveEditReminder(${i})">✓ 保存</button>
+      <button class="todo-edit-cancel" onclick="cancelEditReminder(${i})">✕ 取消</button>
+    </div>
+  `;
+  wrap.appendChild(container);
+
+  const input = document.getElementById('edit-input-r-' + i);
+  input.value = r.text;
+  input.focus();
+  input.select();
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.metaKey) saveEditReminder(i);
+    if (e.key === 'Escape') cancelEditReminder(i);
+  });
+
+  // 把 reminder 的当前 dueDate 转回 picker 状态 (注意 r.dueDate 是 ISO 字符串, 含或不含 Z)
+  let initial = null;
+  if (r.dueDate) {
+    const d = new Date(r.dueDate);
+    if (!isNaN(d.getTime())) {
+      const pad = n => String(n).padStart(2,'0');
+      initial = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+  }
+  const picker = mountDuePicker(document.getElementById('edit-due-r-' + i), { initialIso: initial, compact: true });
+  // 包一层捕获原始值, 用于判断是否被改动过
+  const originalIso = initial;
+  const wrappedGetIso = () => picker.getIso();
+  _editPickers.set(r.id, { picker, originalIso, getIso: wrappedGetIso });
+
+  // 监听 picker 容器变化 → 标记 touched (用 click 在 picker 内即视为 touched)
+  document.getElementById('edit-due-r-' + i).addEventListener('click', () => _editDueTouched.add(r.id), true);
+  document.getElementById('edit-due-r-' + i).addEventListener('input', () => _editDueTouched.add(r.id), true);
+}
+
+async function saveEditReminder(i) {
+  const r = renderedReminders[i];
+  if (!r) return;
+  const input = document.getElementById('edit-input-r-' + i);
+  if (!input) return;
+  const newText = input.value.trim();
+  if (!newText) return;
+
+  const pickerInfo = _editPickers.get(r.id);
+  let dueArg; // undefined = 不改, null = 清空, string = 设置
+  if (pickerInfo && _editDueTouched.has(r.id)) {
+    const newIso = pickerInfo.getIso();
+    if (newIso !== pickerInfo.originalIso) {
+      dueArg = newIso || null;
+    }
+  }
+
+  const result = await window.petAPI.editReminder(r.id, newText, dueArg);
+  if (result.error) { showToast('编辑失败：' + result.error); return; }
+
+  const reminder = reminders.find(x => x.id === r.id);
+  if (reminder) {
+    reminder.text = newText;
+    if (dueArg !== undefined) {
+      reminder.dueDate = dueArg ? new Date(dueArg).toISOString() : null;
+    }
+  }
+  _editPickers.delete(r.id);
+  _editDueTouched.delete(r.id);
+  renderReminders();
+}
+
+function cancelEditReminder(i) {
+  const r = renderedReminders[i];
+  const container = document.getElementById('edit-container-r-' + i);
+  if (container) container.remove();
+  const textEl = document.getElementById('rtext-' + i);
+  if (textEl) textEl.style.display = '';
+  const item = document.getElementById('ritem-' + i);
+  if (item) {
+    const editBtn = item.querySelector('.todo-edit-btn');
+    if (editBtn) editBtn.style.display = '';
+    const dueEl = item.querySelector('.todo-due');
+    if (dueEl) dueEl.style.display = '';
+  }
+  if (r) {
+    _editPickers.delete(r.id);
+    _editDueTouched.delete(r.id);
+  }
+}
+
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    reminderFilter = btn.dataset.filter;
+    renderReminders();
+  });
+});
+
+// ── Files / AI Suggestions ──
+async function getSuggestions() {
+  const btn = document.getElementById('suggest-btn');
+  const list = document.getElementById('suggestion-list');
+  btn.disabled = true;
+  btn.textContent = '◌ 分析中...';
+  list.innerHTML = '<div class="suggestions-loading">正在检测电脑状态并询问 AI，请稍候...</div>';
+
+  const result = await window.petAPI.getAiSuggestions();
+  btn.disabled = false;
+  btn.textContent = '✦ 重新分析';
+
+  if (result.error) {
+    list.innerHTML = `<div class="suggestions-loading">⚠️ ${result.error}</div>`;
+    return;
+  }
+
+  if (!result.items?.length) {
+    list.innerHTML = '<div class="suggestions-loading">未获取到建议，请重试</div>';
+    return;
+  }
+
+  list.innerHTML = result.items.map((text, i) => {
+    const numClass = i < 3 ? 'high' : i < 6 ? 'mid' : '';
+    const fileFilter = /桌面/.test(text) ? 'Desktop' : /下载/.test(text) ? 'Downloads' : 'all';
+    const isFileTopic = /文件|旧文件|大文件/.test(text) && /清理|整理|删除|移除/.test(text);
+    const fileBtn = isFileTopic
+      ? `<button class="suggestion-file-btn" onclick="event.stopPropagation();openFileManager('${fileFilter}')">查看文件 →</button>`
+      : '';
+    return `<div class="suggestion-item" onclick="sendSuggestion('${escHtml(text).replace(/'/g, "\\'")}')">
+      <div class="suggestion-num ${numClass}">${i + 1}</div>
+      <div class="suggestion-text">${escHtml(text)}${fileBtn ? '<br>' + fileBtn : ''}</div>
+      <div class="suggestion-arrow">↗</div>
+    </div>`;
+  }).join('');
+}
+
+function sendSuggestion(text) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelector('.tab[data-tab="chat"]').classList.add('active');
+  document.getElementById('pane-chat').classList.add('active');
+  const input = document.getElementById('chat-input');
+  input.value = text;
+  input.focus();
+  sendChat();
+}
+
+async function deleteFile(filePath, btn) {
+  btn.disabled = true;
+  btn.textContent = '...';
+  const result = await window.petAPI.deleteFile(filePath);
+  if (result.success) {
+    const row = btn.closest('.file-item');
+    row.style.opacity = '0.3';
+    setTimeout(() => row.remove(), 400);
+    showToast('+10 XP 文件已移至废纸篓 🗑');
+  } else {
+    btn.disabled = false;
+    btn.textContent = '移到废纸篓';
+    showToast('删除失败：' + result.error);
+  }
+}
+
+// ── File Manager ──
+let fmFiles = [];
+let fmSelected = new Set();
+let fmFilter = 'all';
+const FM_IMG_EXTS = new Set(['jpg','jpeg','png','gif','webp','heic','heif','bmp','tiff','tif']);
+const FM_ICONS = { pdf:'📄', mp4:'🎬', mov:'🎬', avi:'🎬', mkv:'🎬', zip:'📦', rar:'📦', gz:'📦', '7z':'📦', dmg:'💿', pkg:'💿', app:'📱', psd:'🎨', ai:'🎨', sketch:'🎨', fig:'🎨', xls:'📊', xlsx:'📊', csv:'📊', doc:'📝', docx:'📝', ppt:'📽', pptx:'📽', key:'📽', numbers:'📊', pages:'📝', txt:'📝', md:'📝', mp3:'🎵', m4a:'🎵', wav:'🎵', aac:'🎵' };
+
+async function openFileManager(filter) {
+  fmFilter = filter || 'all';
+  document.getElementById('file-manager-overlay').classList.add('open');
+  fmUpdateFilterBtns();
+  if (!fmFiles.length) {
+    document.getElementById('fm-list').innerHTML = '<div class="fm-scanning">◌ 扫描文件中...</div>';
+    document.getElementById('fm-count').textContent = '扫描中...';
+    await fmScan();
+  } else {
+    fmRender();
+  }
+}
+
+function closeFM() {
+  document.getElementById('file-manager-overlay').classList.remove('open');
+}
+
+async function fmScan() {
+  fmSelected.clear();
+  fmFiles = await window.petAPI.scanFiles();
+  fmRender();
+}
+
+function fmSetFilter(filter) {
+  fmFilter = filter;
+  fmUpdateFilterBtns();
+  fmDeselectAll();
+}
+
+function fmUpdateFilterBtns() {
+  document.querySelectorAll('.fm-filter-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.fmFilter === fmFilter);
+  });
+}
+
+function fmVisible() {
+  return fmFilter === 'all' ? fmFiles : fmFiles.filter(f => f.dir === fmFilter);
+}
+
+function fmItemId(path) {
+  return 'fmi-' + path.replace(/[^a-zA-Z0-9]/g, '_');
+}
+
+function fmRender() {
+  const visible = fmVisible();
+  const list = document.getElementById('fm-list');
+
+  if (!fmFiles.length) {
+    list.innerHTML = '<div class="fm-empty">太棒了！没有发现需要清理的文件 ✨</div>';
+    document.getElementById('fm-count').textContent = '暂无文件';
+    document.getElementById('fm-delete-btn').disabled = true;
+    return;
+  }
+  if (!visible.length) {
+    list.innerHTML = '<div class="fm-empty">该分类下暂无文件</div>';
+    document.getElementById('fm-count').textContent = '0 个文件';
+    document.getElementById('fm-delete-btn').disabled = true;
+    return;
+  }
+
+  list.innerHTML = visible.map(f => {
+    const ext = f.name.split('.').pop().toLowerCase();
+    const isImg = FM_IMG_EXTS.has(ext);
+    const escapedPath = f.path.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const thumb = isImg
+      ? `<div class="fm-thumb"><img src="file://${encodeURI(f.path)}" onerror="this.parentNode.textContent='🖼'"></div>`
+      : `<div class="fm-thumb">${FM_ICONS[ext] || '📁'}</div>`;
+    const sizeFmt = f.size > 1e9 ? (f.size/1e9).toFixed(1)+' GB' : (f.size/1e6).toFixed(1)+' MB';
+    const date = new Date(f.modified).toLocaleDateString('zh-CN');
+    const isOld = f.reason.includes('30天');
+    const isLarge = f.reason.includes('大文件');
+    const sel = fmSelected.has(f.path);
+    return `<div class="fm-item${sel ? ' fm-selected' : ''}" id="${fmItemId(f.path)}" onclick="fmToggle('${escapedPath}')">
+      <div class="fm-checkbox"></div>
+      ${thumb}
+      <div class="fm-info">
+        <div class="fm-name" title="${escHtml(f.path)}">${escHtml(f.name)}</div>
+        <div class="fm-meta">${sizeFmt} · ${date}</div>
+        <div class="fm-tags">
+          ${isOld ? '<span class="fm-tag old">超30天</span>' : ''}
+          ${isLarge ? '<span class="fm-tag large">大文件</span>' : ''}
+          <span class="fm-tag loc">${f.dir}</span>
+          <button class="fm-reveal-btn" onclick="event.stopPropagation();fmReveal('${escapedPath}')">在Finder中查看</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  fmUpdateToolbar();
+}
+
+function fmToggle(path) {
+  if (fmSelected.has(path)) fmSelected.delete(path);
+  else fmSelected.add(path);
+  const el = document.getElementById(fmItemId(path));
+  if (el) el.classList.toggle('fm-selected', fmSelected.has(path));
+  fmUpdateToolbar();
+}
+
+function fmSelectAll() {
+  fmVisible().forEach(f => fmSelected.add(f.path));
+  fmRender();
+}
+
+function fmDeselectAll() {
+  fmSelected.clear();
+  fmRender();
+}
+
+function fmUpdateToolbar() {
+  const n = fmSelected.size;
+  const total = fmVisible().length;
+  document.getElementById('fm-count').textContent = n > 0 ? `已选 ${n} / ${total} 个` : `共 ${total} 个文件`;
+  document.getElementById('fm-delete-btn').disabled = n === 0;
+}
+
+async function fmDeleteSelected() {
+  if (!fmSelected.size) return;
+  const btn = document.getElementById('fm-delete-btn');
+  btn.disabled = true;
+  btn.textContent = '移动中...';
+  const paths = [...fmSelected];
+  let ok = 0;
+  for (const p of paths) {
+    const res = await window.petAPI.deleteFile(p);
+    if (res.success) { ok++; fmFiles = fmFiles.filter(f => f.path !== p); fmSelected.delete(p); }
+  }
+  btn.textContent = '移至废纸篓';
+  showToast(`+${ok * 10} XP · ${ok} 个文件已移至废纸篓 🗑`);
+  fmRender();
+}
+
+async function fmReveal(path) {
+  await window.petAPI.revealInFinder(path);
+}
+
+// ── Workflows ──
+let workflows = [];
+let wfEditId = null;
+
+async function loadWorkflows() {
+  workflows = await window.petAPI.getWorkflows();
+  renderWorkflows();
+}
+
+function renderWorkflows() {
+  const list = document.getElementById('wf-list');
+  if (!list) return;
+  if (!workflows.length) {
+    list.innerHTML = '<div class="wf-empty">还没有自定义流程<br>点击"+ 新建"创建你的第一个工作流</div>';
+    return;
+  }
+  list.innerHTML = workflows.map(wf => `
+    <div class="wf-item" id="wf-${wf.id}">
+      <div class="wf-item-header">
+        <div class="wf-item-name">${escHtml(wf.name)}</div>
+        <button class="wf-run-btn" id="wf-run-${wf.id}" onclick="wfRun('${wf.id}')">▶ 运行</button>
+        <button class="wf-edit-btn" onclick="wfEdit('${wf.id}')">编辑</button>
+        <button class="wf-del-btn" onclick="wfDelete('${wf.id}')">删除</button>
+      </div>
+      <div class="wf-prompt-preview">${escHtml(wf.prompt)}</div>
+      ${wf.lastRun ? `<div class="wf-last-run">上次运行：${new Date(wf.lastRun).toLocaleString('zh-CN')}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+function wfShowCreate() {
+  wfEditId = null;
+  document.getElementById('wf-name-input').value = '';
+  document.getElementById('wf-prompt-input').value = '';
+  document.getElementById('wf-form-title').textContent = '新建流程';
+  document.getElementById('wf-save-btn').textContent = '保存';
+  document.getElementById('wf-form-wrap').classList.add('open');
+  document.getElementById('wf-form-wrap').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  document.getElementById('wf-name-input').focus();
+}
+
+function wfHideForm() {
+  document.getElementById('wf-form-wrap').classList.remove('open');
+  wfEditId = null;
+}
+
+async function wfSave() {
+  const name = document.getElementById('wf-name-input').value.trim();
+  const prompt = document.getElementById('wf-prompt-input').value.trim();
+  if (!name || !prompt) { showToast('请填写流程名称和提示词'); return; }
+  const wf = { id: wfEditId || String(Date.now()), name, prompt };
+  await window.petAPI.saveWorkflow(wf);
+  if (wfEditId) {
+    const idx = workflows.findIndex(w => w.id === wfEditId);
+    if (idx >= 0) workflows[idx] = Object.assign({}, workflows[idx], wf);
+  } else {
+    workflows.push(wf);
+  }
+  wfHideForm();
+  renderWorkflows();
+  showToast(wfEditId ? '✓ 流程已更新' : '✓ 流程已创建');
+  wfEditId = null;
+}
+
+function wfEdit(id) {
+  const wf = workflows.find(w => w.id === id);
+  if (!wf) return;
+  wfEditId = id;
+  document.getElementById('wf-name-input').value = wf.name;
+  document.getElementById('wf-prompt-input').value = wf.prompt;
+  document.getElementById('wf-form-title').textContent = '编辑流程';
+  document.getElementById('wf-save-btn').textContent = '保存修改';
+  document.getElementById('wf-form-wrap').classList.add('open');
+  document.getElementById('wf-form-wrap').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  document.getElementById('wf-name-input').focus();
+}
+
+async function wfDelete(id) {
+  await window.petAPI.deleteWorkflow(id);
+  workflows = workflows.filter(w => w.id !== id);
+  renderWorkflows();
+  showToast('已删除');
+}
+
+async function wfRun(id) {
+  if (isChatting) { showToast('聊天进行中，请稍候再运行'); return; }
+  const wf = workflows.find(w => w.id === id);
+  if (!wf) return;
+
+  // Switch to chat tab
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelector('.tab[data-tab="chat"]').classList.add('active');
+  document.getElementById('pane-chat').classList.add('active');
+
+  // Show as user message with workflow label
+  addUserMessage(`[流程：${wf.name}]\n${wf.prompt}`);
+  addTypingIndicator();
+  isChatting = true;
+  document.getElementById('send-btn').disabled = true;
+
+  const result = await window.petAPI.chat(wf.prompt);
+  removeTypingIndicator();
+  isChatting = false;
+  document.getElementById('send-btn').disabled = false;
+
+  if (result.error) {
+    addPetMessage('系统异常——' + result.error);
+  } else {
+    addPetMessage(result.reply);
+    if (result.level > (state.pet?.level || 1)) {
+      setTimeout(() => addPetMessage(`⚡ 系统升级完成——${state.pet.name} 已进化至 Lv.${result.level}，战斗力提升！`), 500);
+    }
+    state.pet = Object.assign(state.pet || {}, { xp: result.xp, level: result.level });
+    const wfUpdated = Object.assign({}, wf, { lastRun: new Date().toISOString() });
+    await window.petAPI.saveWorkflow(wfUpdated);
+    const idx = workflows.findIndex(w => w.id === id);
+    if (idx >= 0) workflows[idx] = wfUpdated;
+  }
+}
+
+// ── Settings ──
+async function savePetName() {
+  const name = document.getElementById('pet-name-input').value.trim();
+  if (!name) return;
+  await window.petAPI.setPetName(name);
+  state.pet.name = name;
+  document.getElementById('status-name').textContent = `${name} · Lv.${state.pet.level}`;
+  document.getElementById('panel-title').textContent = `◈ ${name} UNIT ◈`;
+  document.getElementById('chat-input').placeholder = `[CHAT] 向 ${name} 发送指令... (⌘↵)`;
+  const s = document.getElementById('name-success');
+  s.style.display = 'block';
+  setTimeout(() => s.style.display = 'none', 2000);
+}
+
+// ── Window Manager ─────────────────────────────────────
+async function loadWindows() {
+  const list = document.getElementById('wins-list');
+  if (!list) return;
+  const btn = document.getElementById('wins-refresh-btn');
+  if (btn) btn.classList.add('spinning');
+  list.innerHTML = '<div class="wins-empty">扫描中…</div>';
+  try {
+    const r = await window.petAPI.listWindows();
+    if (r && r.error) {
+      list.innerHTML = `<div class="wins-empty">读取失败: ${escapeHtml(r.error)}<br>检查辅助功能权限</div>`;
+      return;
+    }
+    if (!Array.isArray(r) || !r.length) {
+      list.innerHTML = '<div class="wins-empty">未检测到可见窗口</div>';
+      return;
+    }
+    list.innerHTML = r.map(g => `
+      <div class="wins-group">
+        <div class="wins-app">
+          <span class="wins-app-name">${escapeHtml(g.app)}</span>
+          <span class="wins-count">${g.windows.length}</span>
+        </div>
+        ${g.windows.map(w => `
+          <div class="wins-item" data-app="${escapeAttr(g.app)}" data-name="${escapeAttr(w.name)}" title="${escapeAttr(w.name)}">
+            <div class="wins-name">${escapeHtml(w.name)}</div>
+            <div class="wins-arrow">→</div>
+          </div>
+        `).join('')}
+      </div>
+    `).join('');
+    // 委托点击
+    list.querySelectorAll('.wins-item').forEach(el => {
+      el.addEventListener('click', () => {
+        activateWindow(el.dataset.app, el.dataset.name);
+      });
+    });
+  } catch (e) {
+    list.innerHTML = `<div class="wins-empty">异常: ${escapeHtml(e.message)}</div>`;
+  } finally {
+    if (btn) btn.classList.remove('spinning');
+  }
+}
+
+async function activateWindow(app, name) {
+  try { await window.petAPI.activateWindow(app, name); } catch (_) {}
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function escapeAttr(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
+async function loadBreakReminder() {
+  try {
+    const cfg = await window.petAPI.getBreakReminder();
+    document.getElementById('break-reminder-enabled').checked = !!cfg.enabled;
+    document.getElementById('break-reminder-interval').value = cfg.intervalMin || 60;
+  } catch (e) { console.log('[BREAK] load failed', e); }
+}
+
+async function saveBreakReminder() {
+  const enabled = document.getElementById('break-reminder-enabled').checked;
+  const intervalMin = parseInt(document.getElementById('break-reminder-interval').value, 10) || 60;
+  try {
+    await window.petAPI.setBreakReminder({ enabled, intervalMin });
+    showToast(enabled ? `✓ 已启用，每 ${intervalMin} 分钟一次` : '已关闭休息提醒');
+  } catch (e) { showToast('✗ 保存失败'); }
+}
+
+async function testBreakReminder() {
+  showToast('骷髅一号起飞中…');
+  try { await window.petAPI.triggerBreakReminder(); }
+  catch (e) { showToast('✗ 触发失败'); }
+}
+
+async function loadEdgePatrol() {
+  try {
+    const cfg = await window.petAPI.getEdgePatrol();
+    document.getElementById('edge-patrol-enabled').checked = !!cfg.enabled;
+  } catch (e) { console.log('[PATROL] load failed', e); }
+}
+
+async function saveEdgePatrol() {
+  const enabled = document.getElementById('edge-patrol-enabled').checked;
+  try {
+    await window.petAPI.setEdgePatrol({ enabled });
+    showToast(enabled ? '✓ 已启用边沿巡航' : '已关闭边沿巡航');
+  } catch (e) { showToast('✗ 保存失败'); }
+}
+
+async function saveReminderList() {
+  const name = document.getElementById('reminder-list-input').value.trim();
+  await window.petAPI.setReminderList(name);
+  state.reminderList = name;
+  document.getElementById('current-list-name').textContent = name || '提醒事项';
+  showToast('✓ 已保存，重新加载提醒');
+  reminders = [];
+  await loadReminders();
+}
+
+async function initReminderLists() {
+  const result = await window.petAPI.getReminderLists();
+  const hint = document.getElementById('reminder-lists-hint');
+  if (result.lists && result.lists.length > 0) {
+    hint.textContent = '可用列表：' + result.lists.join('、');
+  } else if (result.error) {
+    hint.textContent = '无法读取列表：请授权访问"提醒事项"';
+  }
+}
+
+async function saveKey(provider) {
+  const input = document.getElementById('key-' + provider);
+  const key = input.value.trim();
+  if (!key || key.startsWith('•')) return;
+  await window.petAPI.setApiKey(provider, key);
+  input.value = '•'.repeat(Math.min(key.length, 24));
+  input.classList.add('has-key');
+  markKeySet(provider, true);
+  showToast('✓ 已保存');
+}
+
+async function selectProvider(provider) {
+  await window.petAPI.setProvider(provider);
+  state.aiProvider = provider;
+  renderProviderCards(provider);
+  showToast(`已切换到 ${providerLabel(provider)}`);
+}
+
+function providerLabel(p) {
+  return { qwen: '千问', deepseek: 'DeepSeek', doubao: '豆包', ollama: 'Ollama (本地)' }[p] || p;
+}
+
+function renderProviderCards(active) {
+  document.querySelectorAll('.provider-card').forEach(c => {
+    c.classList.toggle('active', c.dataset.provider === active);
+  });
+}
+
+function markKeySet(provider, isSet) {
+  const el = document.getElementById('status-' + provider);
+  if (!el) return;
+  if (isSet) {
+    el.textContent = '✓ 已设置'; el.className = 'key-status set';
+  } else {
+    el.textContent = '未设置'; el.className = 'key-status unset';
+  }
+}
+
+function handleAvatarFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const dataUrl = e.target.result;
+    currentAvatar = dataUrl;
+    setAvatarContent(document.getElementById('pet-mini-avatar'), dataUrl);
+    setAvatarContent(document.getElementById('avatar-preview-lg'), dataUrl);
+    await window.petAPI.setPetAvatar(dataUrl);
+    showToast('✓ 头像已更新');
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+
+function initSettings() {
+  const apiKeys = state.apiKeys || {};
+  const provider = state.aiProvider || 'qwen';
+  renderProviderCards(provider);
+  setAvatarContent(document.getElementById('pet-mini-avatar'), currentAvatar);
+  setAvatarContent(document.getElementById('avatar-preview-lg'), currentAvatar);
+  ['qwen', 'deepseek', 'doubao', 'metaso'].forEach(p => {
+    const hasKey = !!(apiKeys[p]);
+    const input = document.getElementById('key-' + p);
+    if (input && hasKey) { input.value = '•'.repeat(20); input.classList.add('has-key'); }
+    markKeySet(p, hasKey);
+  });
+}
+
+// ── Helpers ──
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ── 轻量 Markdown 渲染 (用于 pet 消息气泡) ─────────────────
+// 支持: **bold** *italic* `code` ## heading - bullet 表格 (Github 风格)
+// 不依赖任何库, 先按行扫描归类成 block, 再每个 block 按规则转 HTML.
+// 安全做法: 所有用户/AI 文本先 escHtml, 再用占位符还原我们想保留的标签.
+function renderMarkdown(text) {
+  if (!text) return '';
+  const lines = text.split('\n');
+  const blocks = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    // 表格识别: 当前行 |...|, 下一行是 |---|---| 形式的分隔
+    if (/^\s*\|.*\|\s*$/.test(line)
+        && i + 1 < lines.length
+        && /^\s*\|[\s\-:|]+\|\s*$/.test(lines[i + 1])) {
+      const tableLines = [line, lines[i + 1]];
+      let j = i + 2;
+      while (j < lines.length && /^\s*\|.*\|\s*$/.test(lines[j])) {
+        tableLines.push(lines[j]);
+        j++;
+      }
+      blocks.push({ type: 'table', lines: tableLines });
+      i = j;
+      continue;
+    }
+    // 列表: 连续 - 或 * 开头的行
+    if (/^\s*[-*]\s+\S/.test(line)) {
+      const listLines = [line];
+      let j = i + 1;
+      while (j < lines.length && /^\s*[-*]\s+\S/.test(lines[j])) {
+        listLines.push(lines[j]);
+        j++;
+      }
+      blocks.push({ type: 'list', lines: listLines });
+      i = j;
+      continue;
+    }
+    // 标题
+    const heading = line.match(/^(#{1,3})\s+(.+)/);
+    if (heading) {
+      blocks.push({ type: 'heading', level: heading[1].length, text: heading[2] });
+      i++;
+      continue;
+    }
+    blocks.push({ type: 'line', text: line });
+    i++;
+  }
+
+  return blocks.map(renderBlock).join('');
+}
+
+function renderBlock(b) {
+  if (b.type === 'table') return renderTable(b.lines);
+  if (b.type === 'list')  return '<ul class="md-list">' + b.lines.map(l =>
+    '<li>' + renderInline(l.replace(/^\s*[-*]\s+/, '')) + '</li>').join('') + '</ul>';
+  if (b.type === 'heading') return '<div class="md-h md-h' + b.level + '">' + renderInline(b.text) + '</div>';
+  // 普通行: 空行 → 段落留白; 否则一行一 div
+  if (!b.text.trim()) return '<div class="md-gap"></div>';
+  return '<div class="md-line">' + renderInline(b.text) + '</div>';
+}
+
+function renderInline(s) {
+  // 先 escape, 再用占位符注入标签
+  s = escHtml(s);
+  // inline code `xxx`
+  s = s.replace(/`([^`]+)`/g, '<code class="md-code">$1</code>');
+  // bold **xxx**
+  s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  // italic *xxx* (避开 ** 已处理)
+  s = s.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+  return s;
+}
+
+function renderTable(lines) {
+  if (lines.length < 2) return lines.map(escHtml).join('<br>');
+  const splitRow = (row) => row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+  // 解析对齐
+  const align = splitRow(lines[1]).map(spec => {
+    const l = spec.startsWith(':');
+    const r = spec.endsWith(':');
+    return l && r ? 'center' : r ? 'right' : 'left';
+  });
+  const header = splitRow(lines[0]);
+  const rows = lines.slice(2).map(splitRow);
+  let html = '<table class="md-table"><thead><tr>';
+  header.forEach((h, idx) => {
+    html += `<th style="text-align:${align[idx] || 'left'}">${renderInline(h)}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+  for (const r of rows) {
+    html += '<tr>';
+    r.forEach((c, idx) => {
+      html += `<td style="text-align:${align[idx] || 'left'}">${renderInline(c)}</td>`;
+    });
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  return html;
+}
+
+// ── Terminal Monitor ──
+// 终端文字扫描的全局禁用开关 — 扫屏方案误报多 (任何窗口里出现 Yes/No、Allow、(Y/n) 等
+// 字样都会触发, 包括代码片段/日志/文档). Claude Code 已通过 PermissionRequest hook 给
+// 出零误报的告警通道, 不再需要扫屏兜底. 想恢复扫屏改成 false 即可.
+const TERM_SCAN_DISABLED = true;
+let termActive = false;
+let _termDiag = false;
+let _termAlertActive = false;   // 同步眼睛颜色用         // diagnostic view: show all sessions with raw content
+let _termAlertHeadKey = null;   // 当前点击目标的 session key, 序集变化时驱动 IPC 刷新
+let _termAllSessions = [];     // cached sessions for diag mode
+let _termPromptSessions = [];
+let _termBusyMap = new Map();
+let _termNotifiedPrompts = new Set();
+// Stability cache for initial detection: streaming output changes every poll; real prompts stay static.
+// key → { content, stableCount }
+let _termContentCache = new Map();
+// Latch cache: once a prompt is detected, keep it until the pattern leaves the content.
+// key → { session, prompt }
+let _termLatchedPrompts = new Map();
+// Cooldown cache: after user acts on a prompt, suppress re-detection for a few seconds
+// while the terminal UI transitions. key → expiry timestamp (ms)
+let _termCooldown = new Map();
+
+const TERM_DONE_MSGS = [
+  '任务执行完毕。',
+  '作战完成——等待下一步指令。',
+  '[ 终端进程结束 ] 随时待命。',
+  '报告：终端任务已完成。',
+  '作业完成。骷髅一号待机中。',
+];
+
+// strict=true  → match anywhere in last 15 lines (the pattern is highly specific)
+// strict=false → only match in last 3 lines  (broad pattern; real prompts are always at cursor/bottom)
+const TERM_PROMPT_PATTERNS = [
+  // ── Claude Code 独占 footer (新版交互式 UI) ──
+  // 这一行在 Claude Code 等待用户选择时永远存在, 是最可靠的检测锚点.
+  { re: /Esc to cancel.*Tab to amend/i,                          type: 'enter', label: 'Claude 待确认',  strict: true },
+  { re: /Tab to amend.*ctrl\+e to explain/i,                     type: 'enter', label: 'Claude 待确认',  strict: true },
+
+  // ── Claude Code 编号选项格式: "❯ 1. Yes" / "❯ 2. No" ──
+  // 修复: 之前 [❯›]\s*(Yes|...) 漏掉了指针和 Yes 之间的"1."编号
+  { re: /[❯›●▶]\s*\d+[\.\)]\s*(Yes|Allow|Proceed|Continue|Apply|Run|Try|Accept|Approve|Confirm|OK|Send)/i,
+    type: 'enter', label: 'Claude 权限', strict: true },
+  // ASCII 指针变体: "> 1. Yes"
+  { re: /^\s*>\s+\d+[\.\)]\s*(Yes|Allow|Proceed|Continue|Apply|Run|Try|Accept|Approve|Confirm|OK)/im,
+    type: 'enter', label: 'Claude 权限', strict: true },
+  // 跨行的 "1. Yes ... 2. No" 组合 (无论指针在哪行) — 高度特异
+  { re: /\b1\.\s*Yes\b[\s\S]{0,40}\b2\.\s*No\b/i,                type: 'enter', label: 'Yes/No 选择',  strict: true },
+
+  // ── Claude Code permission dialogs ("Allow once / Allow always / Yes / No") ──
+  { re: /\bAllow\s+(once|always(\s+for\s+session)?)\b/i,         type: 'enter', label: 'Claude 权限', strict: true },
+  { re: /[❯›●▶]\s*Allow\b/i,                                     type: 'enter', label: 'Claude 权限', strict: true },
+  // ── Claude Code / agent selection cursor (❯ U+276F or › U+203A) ──
+  { re: /[❯›]\s*(Yes|Allow|Proceed|Continue|Apply|Run|Try|Accept)/i, type: 'enter', label: 'Agent 确认', strict: true },
+  // > selector — must be in last 3 lines to avoid matching file diffs or prose
+  { re: /^\s*>\s*(Yes|Allow|Proceed|Continue|Apply|Run|Try|Accept)\s*$/im, type: 'enter', label: 'Agent 确认', strict: false },
+  // Standalone "Yes / No" selection line (Claude Code box UI) — last 3 lines only
+  { re: /^\s*\bYes\b.{0,20}\bNo\b\s*$/im,                     type: 'enter', label: 'Agent 确认', strict: false },
+  // Standard Y/n bracket forms — highly specific, safe to check wider window
+  { re: /\[Y\/n\]/,                                            type: 'yn',    label: '确认',       defaultY: true,  strict: true },
+  { re: /\(Y\/n\)/,                                            type: 'yn',    label: '确认',       defaultY: true,  strict: true },
+  { re: /\[y\/N\]/,                                            type: 'yn',    label: '确认',       defaultY: false, strict: true },
+  { re: /\(y\/N\)/,                                            type: 'yn',    label: '确认',       defaultY: false, strict: true },
+  { re: /\[y\/n\]/i,                                           type: 'yn',    label: '确认',       defaultY: true,  strict: true },
+  { re: /\? .+\(Y\/n\)/,                                       type: 'yn',    label: '确认',       defaultY: true,  strict: true },
+  { re: /\? .+\(y\/N\)/,                                       type: 'yn',    label: '确认',       defaultY: false, strict: true },
+  // "Do you want to …?" — 提升为 strict (扩窗到 15 行), Claude Code 的提问行常被菜单挤出 narrow 窗口
+  { re: /Do you want to (allow|proceed|continue|run|try|use|apply|delete|overwrite|install|update|remove|edit|stop)\??/i,
+    type: 'yn', label: '操作确认', defaultY: true, strict: true },
+  // "Would you like to …?" — strict 同理
+  { re: /Would you like to (allow|proceed|continue|run|try|use|apply|edit|stop|delete|install|update)/i,
+    type: 'yn', label: '操作确认', defaultY: true, strict: true },
+  // "Try …?" — only last 3 lines
+  { re: /\bTry .+\?/i,                                         type: 'yn',    label: '尝试?',      defaultY: true,  strict: false },
+  // Press return/enter — specific enough
+  { re: /Press RETURN to continue/i,                           type: 'enter', label: '按回车继续',               strict: true },
+  { re: /press enter to continue/i,                            type: 'enter', label: '按回车继续',               strict: true },
+  // Overwrite/Are you sure — specific enough
+  { re: /Are you sure\?/i,                                     type: 'yn',    label: '确认操作',   defaultY: false, strict: true },
+  { re: /Continue\? \[/i,                                      type: 'yn',    label: '继续?',      defaultY: true,  strict: true },
+  { re: /Overwrite\?/i,                                        type: 'yn',    label: '覆盖文件?',  defaultY: false, strict: true },
+];
+
+// Strip ANSI escape codes so contaminated t.contents() output doesn't break regexes
+function stripAnsi(s) {
+  return s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').replace(/\x1b[()][A-B0-2]/g, '').replace(/[\x00-\x08\x0e-\x1f\x7f]/g, '');
+}
+
+function detectTermPrompt(rawLines) {
+  const cleaned = stripAnsi(rawLines);
+  const lines = cleaned.split('\n').filter(l => l.trim());
+  const wideLines  = lines.slice(-15).join('\n');  // for strict patterns
+  const narrowLines = lines.slice(-3).join('\n');  // for loose patterns (last 3 lines = near cursor)
+  for (const pat of TERM_PROMPT_PATTERNS) {
+    const haystack = pat.strict ? wideLines : narrowLines;
+    if (pat.re.test(haystack)) {
+      const preview = lines.slice(-15).join('\n');
+      return { type: pat.type, label: pat.label, defaultY: pat.defaultY, preview };
+    }
+  }
+  return null;
+}
+
+// Checks only strict patterns — safe to call every poll without stability pre-filter.
+function termDetectStrict(rawLines) {
+  const cleaned = stripAnsi(rawLines);
+  const lines = cleaned.split('\n').filter(l => l.trim());
+  const wideLines = lines.slice(-15).join('\n');
+  for (const pat of TERM_PROMPT_PATTERNS) {
+    if (!pat.strict) continue;
+    if (pat.re.test(wideLines)) {
+      return { type: pat.type, label: pat.label, defaultY: pat.defaultY, preview: lines.slice(-15).join('\n') };
+    }
+  }
+  return null;
+}
+
+// Checks only non-strict patterns — only call after content has stabilised.
+function termDetectLoose(rawLines) {
+  const cleaned = stripAnsi(rawLines);
+  const lines = cleaned.split('\n').filter(l => l.trim());
+  const narrowLines = lines.slice(-3).join('\n');
+  for (const pat of TERM_PROMPT_PATTERNS) {
+    if (pat.strict) continue;
+    if (pat.re.test(narrowLines)) {
+      return { type: pat.type, label: pat.label, defaultY: pat.defaultY, preview: lines.slice(-15).join('\n') };
+    }
+  }
+  return null;
+}
+
+async function termPoll() {
+  // 全局短路: 关闭终端文字扫描 (方案 A — 改用 PermissionRequest hook)
+  // 仍然清掉本地告警状态, 防止已 latch 的告警卡住雷达
+  if (TERM_SCAN_DISABLED) {
+    if (_termAlertActive) {
+      _termAlertActive = false;
+      _termAlertHeadKey = null;
+      _termLatchedPrompts.clear();
+      _termContentCache.clear();
+      _termNotifiedPrompts.clear();
+      window.petAPI.setTermAlert(false, null);
+    }
+    return;
+  }
+  const result = await window.petAPI.getTerminalSessions();
+  const badge = document.getElementById('term-badge');
+  const dot = document.getElementById('term-status-dot');
+
+  // Surface accessibility permission hint once per session
+  if (result && result.axTrusted === false && termActive) {
+    const hint = document.getElementById('term-ax-hint');
+    if (hint) hint.style.display = '';
+  } else {
+    const hint = document.getElementById('term-ax-hint');
+    if (hint) hint.style.display = 'none';
+  }
+
+  if (!result || (result.error && !result.sessions?.length)) {
+    badge.classList.remove('active');
+    dot.classList.remove('alert');
+    if (termActive) {
+      document.getElementById('term-status-text').textContent = '未检测到终端应用';
+      document.getElementById('term-sessions-container').innerHTML = '<div class="term-idle-msg">[ 未检测到运行中的终端 ]</div>';
+    }
+    return;
+  }
+
+  const sessions = result.sessions || [];
+  _termAllSessions = sessions;
+
+  // Detect busy → idle transitions (task completed) for Terminal.app sessions
+  if (_termBusyMap.size > 0) {
+    for (const s of sessions) {
+      if (s.app !== 'Terminal') continue;
+      const key = `Terminal-${s.windowId || s.windowIndex}-${s.tabIndex}`;
+      const wasBusy = _termBusyMap.get(key);
+      if (wasBusy === true && !s.busy) {
+        const label = s.tabName || s.windowName || `窗口${s.windowIndex}`;
+        const msg = TERM_DONE_MSGS[Math.floor(Math.random() * TERM_DONE_MSGS.length)];
+        window.petAPI.notifyPet(`[${label}] ${msg}`);
+      }
+    }
+  }
+  // Update busy state map
+  for (const s of sessions) {
+    if (s.app !== 'Terminal') continue;
+    const key = `Terminal-${s.windowId || s.windowIndex}-${s.tabIndex}`;
+    _termBusyMap.set(key, s.busy);
+  }
+
+  // Evict stale cache entries for sessions that no longer exist
+  const activeKeys = new Set(sessions.map(s => `${s.app}-${s.windowId || s.windowIndex}-${s.tabIndex}`));
+  for (const k of _termContentCache.keys())    { if (!activeKeys.has(k)) _termContentCache.delete(k); }
+  for (const k of _termLatchedPrompts.keys())  { if (!activeKeys.has(k)) _termLatchedPrompts.delete(k); }
+
+  for (const s of sessions) {
+    const key = `${s.app}-${s.windowId || s.windowIndex}-${s.tabIndex}`;
+    const content = stripAnsi(s.lastLines || '');
+
+    if (_termLatchedPrompts.has(key)) {
+      // 重新校验: 如果当前内容里已经检测不到任何 prompt 模式, 说明用户已经
+      // 在终端里操作过了 (绕过面板按了 y/Enter, 或 prompt 自动消失). 自动释放
+      // latch 并设短 cooldown, 避免一闪一灭.
+      const stillMatches = !!detectTermPrompt(content);
+      if (!stillMatches) {
+        console.log('[TERM] latch auto-release', key);
+        _termLatchedPrompts.delete(key);
+        _termNotifiedPrompts.delete(key);
+        _termContentCache.delete(key);
+        _termCooldown.set(key, Date.now() + 3000);
+        continue;
+      }
+      // 仍匹配 ── 只刷新 session 引用 (按钮回调要用最新数据)
+      const latch = _termLatchedPrompts.get(key);
+      _termLatchedPrompts.set(key, { ...latch, session: s });
+      continue;
+    }
+
+    // After user acts on a prompt, suppress re-detection while the terminal UI transitions.
+    // Without this the card immediately reappears because the pattern is still visible.
+    if (_termCooldown.has(key)) {
+      if (Date.now() < _termCooldown.get(key)) continue;
+      _termCooldown.delete(key);
+    }
+
+    // Strict patterns are highly specific → latch immediately, no stability check needed.
+    // This fixes Claude Code / Ink-based UIs whose dynamic rendering prevents the content
+    // from ever being identical across two consecutive polls.
+    const pStrict = termDetectStrict(content);
+    if (pStrict) {
+      console.log('[TERM] strict match', key, pStrict.label);
+      _termLatchedPrompts.set(key, { session: s, prompt: pStrict });
+      continue;
+    }
+
+    // Non-strict patterns are broader (can false-positive on prose/diffs) → require
+    // 2 identical consecutive snapshots to confirm the terminal is actually waiting.
+    const prev = _termContentCache.get(key);
+    if (!prev || prev.content !== content) {
+      _termContentCache.set(key, { content, stableCount: 1 });
+      continue;
+    }
+    const stableCount = prev.stableCount + 1;
+    _termContentCache.set(key, { content, stableCount });
+    if (stableCount < 2) continue;
+
+    // 稳定后检查所有模式（strict + non-strict），防止 termDetectStrict 在内容抖动时漏掉的 strict 模式
+    const p = detectTermPrompt(content);
+    if (p) {
+      console.log('[TERM] loose match', key, p.label);
+      _termLatchedPrompts.set(key, { session: s, prompt: p });
+    }
+  }
+
+  const promptSessions = Array.from(_termLatchedPrompts.values())
+    .map(({ session, prompt }) => ({ ...session, prompt }));
+
+  const newAlert = promptSessions.length > 0;
+  // 计算"头部"会话作为点击目标 ── 序集变化时也需要刷新, 不是只在 transition 时.
+  const headSession = newAlert ? promptSessions[0] : null;
+  const headKey = headSession ? `${headSession.app}-${headSession.windowId || headSession.windowIndex}-${headSession.tabIndex}` : null;
+  const stateChanged = newAlert !== _termAlertActive;
+  const sessionChanged = newAlert && headKey !== _termAlertHeadKey;
+  if (stateChanged || sessionChanged) {
+    _termAlertActive = newAlert;
+    _termAlertHeadKey = headKey;
+    const alertSession = headSession ? {
+      app: headSession.app,
+      windowIndex: headSession.windowIndex,
+      windowId: headSession.windowId,
+      windowName: headSession.windowName,
+      tabIndex: headSession.tabIndex,
+    } : null;
+    console.log('[TERM] setTermAlert', newAlert, alertSession);
+    window.petAPI.setTermAlert(newAlert, alertSession);
+  }
+
+  if (promptSessions.length > 0) {
+    badge.classList.add('active');
+    dot.classList.add('alert');
+    // Notify pet for newly detected prompts (once per session, not every poll)
+    for (const s of promptSessions) {
+      const key = `${s.app}-${s.windowId || s.windowIndex}-${s.tabIndex}`;
+      if (!_termNotifiedPrompts.has(key)) {
+        _termNotifiedPrompts.add(key);
+        const label = s.tabName || s.windowName || `窗口${s.windowIndex}`;
+        window.petAPI.notifyPet(`[${label}] 终端需要您确认！`);
+      }
+    }
+  } else {
+    badge.classList.remove('active');
+    dot.classList.remove('alert');
+    // Clear notified set when no prompts remain so future prompts fire again
+    _termNotifiedPrompts.clear();
+  }
+
+  _termPromptSessions = promptSessions;
+
+  if (!termActive) return;
+  const statusEl = document.getElementById('term-status-text');
+  const container = document.getElementById('term-sessions-container');
+
+  if (sessions.length === 0) {
+    statusEl.textContent = '未检测到终端窗口';
+    container.innerHTML = '<div class="term-idle-msg">[ 未检测到运行中的终端 ]</div>';
+    return;
+  }
+
+  if (_termDiag) {
+    statusEl.textContent = `诊断模式 · ${sessions.length} 个会话`;
+    container.innerHTML = sessions.length === 0
+      ? '<div class="term-idle-msg">[ 未检测到终端窗口 ]</div>'
+      : sessions.map(s => {
+          const label = s.tabName || s.windowName || (s.app === 'Terminal' ? `窗口${s.windowIndex}·标签${s.tabIndex}` : `iTerm2 ${s.windowIndex}-${s.tabIndex}`);
+          const raw = s.lastLines.split('\n').filter(l => l.trim()).slice(-6).join('\n') || '（无内容）';
+          const p = detectTermPrompt(s.lastLines);
+          const border = p ? '1px solid rgba(255,80,80,0.6)' : '1px solid rgba(255,255,255,0.08)';
+          return `<div class="term-session-card" style="border:${border}">
+            <div class="term-card-header"><span>${escHtml(label)}</span><span style="font-size:10px;opacity:0.6">${s.busy ? '● 运行中' : '○ 空闲'}${p ? ' ⚠已匹配' : ''}</span></div>
+            <div class="term-prompt-preview" style="white-space:pre-wrap;font-size:10px">${escHtml(raw)}</div>
+          </div>`;
+        }).join('');
+    return;
+  }
+
+  if (promptSessions.length === 0) {
+    statusEl.textContent = `监控中 · ${sessions.length} 个会话 · 无待确认`;
+    container.innerHTML = '<div class="term-idle-msg">[ 所有终端运行正常，无需确认 ]</div>';
+    return;
+  }
+
+  statusEl.textContent = `⚠ ${promptSessions.length} 个会话需要确认`;
+
+  container.innerHTML = promptSessions.map((s, idx) => {
+    const sessionLabel = s.tabName || s.windowName || (s.app === 'Terminal' ? `窗口 ${s.windowIndex}` : `会话 ${s.sessionId}`);
+    const appLabel = `${s.app} · ${sessionLabel}`;
+    const type = s.prompt.type;
+    const confirmBtn = type === 'yn'
+      ? `<button class="term-action-btn yes" onclick="termConfirm(${idx})">✓ 确认 (y)</button>`
+      : type === 'tab'
+        ? `<button class="term-action-btn enter" onclick="termConfirm(${idx})">↹ 接受编辑 (Tab)</button>`
+        : `<button class="term-action-btn enter" onclick="termConfirm(${idx})">↵ 确认 (Enter)</button>`;
+    const denyBtn = type === 'yn'
+      ? `<button class="term-action-btn no" onclick="termDeny(${idx})">✗ 拒绝 (n)</button>`
+      : type === 'tab'
+        ? `<button class="term-action-btn no" onclick="termDeny(${idx})">✗ 中断 (Esc)</button>`
+        : '';
+    return `
+      <div class="term-session-card" id="term-card-${idx}">
+        <div class="term-card-header">
+          <span>${escHtml(appLabel)}</span>
+          <span class="term-alert-tag">⚠ ${escHtml(s.prompt.label)}</span>
+        </div>
+        <div class="term-prompt-preview">${escHtml(s.prompt.preview)}</div>
+        <div class="term-card-actions">${confirmBtn}${denyBtn}</div>
+      </div>`;
+  }).join('');
+}
+
+async function termSend(idx, text) {
+  const s = _termPromptSessions[idx];
+  if (!s) return;
+  const card = document.getElementById(`term-card-${idx}`);
+  if (card) { card.style.opacity = '0.5'; card.querySelectorAll('button').forEach(b => b.disabled = true); }
+  const result = await window.petAPI.sendTerminalInput({ app: s.app, windowIndex: s.windowIndex, windowId: s.windowId, tabIndex: s.tabIndex, sessionId: s.sessionId, text });
+  if (result && result.ok) {
+    showToast('✓ 已发送');
+    const latchKey = `${s.app}-${s.windowId || s.windowIndex}-${s.tabIndex}`;
+    _termLatchedPrompts.delete(latchKey);
+    _termNotifiedPrompts.delete(latchKey);
+    _termContentCache.delete(latchKey);                  // force fresh read next poll
+    _termCooldown.set(latchKey, Date.now() + 8000);      // 8s: time for Ink UI to clear
+    setTimeout(termPoll, 1500);
+  } else {
+    showToast('发送失败：' + (result?.error || '未知错误'));
+    if (card) { card.style.opacity = ''; card.querySelectorAll('button').forEach(b => b.disabled = false); }
+  }
+}
+
+function termConfirm(idx) {
+  const s = _termPromptSessions[idx];
+  const type = s?.prompt.type;
+  termSend(idx, type === 'yn' ? 'y\n' : type === 'tab' ? '\t' : '\n');
+}
+function termDeny(idx) {
+  const s = _termPromptSessions[idx];
+  termSend(idx, s?.prompt.type === 'tab' ? '\x1b' : 'n\n');
+}
+function termPollNow() { termPoll(); }
+function termToggleDiag() {
+  _termDiag = !_termDiag;
+  const btn = document.getElementById('term-diag-btn');
+  if (btn) btn.style.opacity = _termDiag ? '1' : '0.5';
+  termPoll();
+}
+
+// 警报音开关 — 持久化到 store, 主进程广播给 pet 窗口
+let _alertSoundEnabled = true;
+function _renderAlertSoundBtn() {
+  const btn = document.getElementById('term-sound-btn');
+  if (!btn) return;
+  btn.textContent = _alertSoundEnabled ? '🔔' : '🔕';
+  btn.title = '警报音：' + (_alertSoundEnabled ? '开 (点击关闭)' : '关 (点击开启)');
+  btn.style.opacity = _alertSoundEnabled ? '1' : '0.5';
+}
+async function termToggleAlertSound() {
+  _alertSoundEnabled = !_alertSoundEnabled;
+  _renderAlertSoundBtn();
+  try { await window.petAPI.setAlertSoundEnabled(_alertSoundEnabled); }
+  catch (e) { console.log('[TERM] toggle alert sound failed', e); }
+}
+async function _initAlertSoundBtn() {
+  try {
+    const r = await window.petAPI.getAlertSoundEnabled();
+    _alertSoundEnabled = r && r.enabled !== false;
+  } catch {}
+  _renderAlertSoundBtn();
+}
+_initAlertSoundBtn();
+
+// Background polling for badge (always on)
+setInterval(termPoll, 2500);
+
+// ── 辅助功能权限横幅: 启动 + 30s 轮询, 用户授权后自动消失 ─────────
+let _axDismissed = false;       // 本次会话是否被用户主动关闭过(只是隐藏当前显示, 下次仍会重检)
+let _axShownThisSession = false;
+async function checkAxBanner() {
+  const banner = document.getElementById('ax-warning-banner');
+  if (!banner) return;
+  try {
+    const r = await window.petAPI.checkAxTrusted();
+    const trusted = r && r.axTrusted === true;
+    if (trusted) {
+      banner.style.display = 'none';
+      _axDismissed = false;     // 重新授权后下次失权会再弹
+      return;
+    }
+    if (_axDismissed) return;   // 用户手动关掉过, 这次不再显示
+    banner.style.display = '';
+    if (!_axShownThisSession) {
+      _axShownThisSession = true;
+      console.log('[AX] not trusted — showing banner');
+    }
+  } catch (e) { console.log('[AX] check failed', e); }
+}
+checkAxBanner();
+setInterval(checkAxBanner, 30000);
+
+document.getElementById('ax-open-settings').addEventListener('click', async () => {
+  await window.petAPI.openAxSettings();
+  // 5 秒后再检测一次, 让权限状态尽快反映回来
+  setTimeout(checkAxBanner, 5000);
+  setTimeout(checkAxBanner, 15000);
+});
+document.getElementById('ax-dismiss').addEventListener('click', () => {
+  _axDismissed = true;
+  document.getElementById('ax-warning-banner').style.display = 'none';
+});
+
+// ── Finance ──
+let financeTabActive = false;
+let _financeLoaded   = false;
+let _financeTimer    = null;
+
+function financeLoad() {
+  if (!_financeLoaded) {
+    document.getElementById('fin-grid').innerHTML = '<div class="fin-loading">◌ 载入行情数据中...</div>';
+  }
+  financeRefresh();
+  if (!_financeTimer) {
+    _financeTimer = setInterval(() => { if (financeTabActive) financeRefresh(); }, 60000);
+  }
+}
+
+async function financeRefresh() {
+  const btn = document.getElementById('fin-refresh-btn');
+  if (btn) btn.classList.add('spinning');
+  try {
+    const data = await window.petAPI.getFinanceData();
+    renderFinanceData(data);
+    _financeLoaded = true;
+    const t = document.getElementById('fin-time');
+    if (t) {
+      const now = new Date();
+      t.textContent = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+  } catch (e) {
+    if (!_financeLoaded) {
+      const g = document.getElementById('fin-grid');
+      if (g) g.innerHTML = `<div class="fin-loading" style="color:rgba(255,90,60,0.7)">⚠ 获取失败：${escHtml(e.message)}</div>`;
+    }
+  } finally {
+    if (btn) btn.classList.remove('spinning');
+  }
+}
+
+function _fmtNum(v, dec) {
+  const [int, frac] = Number(v).toFixed(dec).split('.');
+  return int.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (frac !== undefined ? '.' + frac : '');
+}
+
+function renderFinanceData(d) {
+  const g = document.getElementById('fin-grid');
+  if (!g) return;
+  const goldErr = d.gold_cny_per_gram?.error ?? null;
+  const rows = [
+    { name: '国际金价',    sub: 'XAU · CNY/克',     v: d.gold_cny_per_gram?.price, prev: d.gold_cny_per_gram?.prevClose, dec: 2, err: goldErr },
+    { name: '上证指数',    sub: 'SSE · 000001.SS',   v: d.shanghai?.price, prev: d.shanghai?.prevClose, dec: 2, err: d.shanghai?.error },
+    { name: '日经 225',    sub: 'Nikkei · ^N225',    v: d.nikkei?.price,   prev: d.nikkei?.prevClose,   dec: 2, err: d.nikkei?.error },
+    { name: '道琼斯',      sub: 'DJIA · ^DJI',       v: d.djia?.price,     prev: d.djia?.prevClose,     dec: 2, err: d.djia?.error },
+    { name: '美元 / 日元', sub: 'USD/JPY',           v: d.usdjpy?.price,   prev: d.usdjpy?.prevClose,   dec: 3, err: d.usdjpy?.error },
+    { name: '美元 / 人民币',sub:'USD/CNY',           v: d.usdcny?.price,   prev: d.usdcny?.prevClose,   dec: 4, err: d.usdcny?.error },
+  ];
+  g.innerHTML = rows.map(r => {
+    const hasPrice = r.v != null && !isNaN(r.v) && !r.err;
+    let rightHtml;
+    if (!hasPrice) {
+      const errLabel = r.err ? escHtml(r.err.slice(0, 35)) : '暂无数据';
+      rightHtml = `<div class="fin-err" title="${escHtml(r.err||'')}">${errLabel}</div>`;
+    } else {
+      let changeHtml = '';
+      if (r.prev != null && r.prev > 0 && !isNaN(r.prev)) {
+        const chg = r.v - r.prev;
+        const pct = chg / r.prev * 100;
+        const sign = chg >= 0 ? '+' : '';
+        const cls  = chg > 1e-8 ? 'up' : chg < -1e-8 ? 'dn' : 'flat';
+        changeHtml = `<div class="fin-change ${cls}">${sign}${_fmtNum(chg, r.dec)} (${sign}${pct.toFixed(2)}%)</div>`;
+      }
+      rightHtml = `<div class="fin-price">${_fmtNum(r.v, r.dec)}</div>${changeHtml}`;
+    }
+    return `<div class="fin-card">
+      <div><div class="fin-name">${r.name}</div><div class="fin-sub">${r.sub}</div></div>
+      <div>${rightHtml}</div>
+    </div>`;
+  }).join('');
+}
+
+init();
+</script>
+</body>
+</html>
