@@ -936,15 +936,19 @@ function playTransformSfx() {
   ping.stop(ct + 0.22);
 }
 
+// 语音台词语言 (由主进程同步: 初始 getState, 切换时 pet-update.voiceLang)
+let _voiceLang = 'zh';
 // ── 告警语音循环: 每 30 秒重念一次 (替代扫频警报音) ──
 let _alertVoiceTimer = null;
-const ALERT_VOICE_TEXT = '发现不明物体';
+// 极简兜底; 真正内容在 voice-lines.json, init 时经 IPC 拉取覆盖
+let ALERT_LINES = { zh: '发现不明物体', en: 'Unidentified contact detected' };
+function alertText() { return ALERT_LINES[_voiceLang] || ALERT_LINES.zh; }
 function startAlertVoiceLoop() {
   if (_alertVoiceTimer) return;            // 已经在跑
   if (!_alertSoundEnabled) return;
-  speakVF1(ALERT_VOICE_TEXT);             // 立刻念第一遍
+  speakVF1(alertText());                   // 立刻念第一遍
   _alertVoiceTimer = setInterval(() => {
-    if (_alertSoundEnabled) speakVF1(ALERT_VOICE_TEXT);
+    if (_alertSoundEnabled) speakVF1(alertText());
   }, 30000);
 }
 function stopAlertVoiceLoop() {
@@ -1344,26 +1348,17 @@ document.addEventListener('mousemove', (e) => {
 // 离开窗口 → 恢复响应, 下次进入不会先卡在 ignore 状态
 document.addEventListener('mouseleave', () => { _setIgnoreMouse(false); });
 
-// 点击形态切换时随机播报的"情绪价值"金句 — 军事简报 + 战斗感, 不带忠诚/陪伴
-const EMO_LINES = [
-  '驾驶员辛苦了',
-  '听命',
-  '准备就绪',
-  '骷髅一号待命中',
-  '请下达指令',
-  '收到，立即变形',
-  '骷髅中队，出击',
-  '为驾驶员作战是我的使命',
-  '与驾驶员并肩作战',
-];
+// 点击金句 — 极简兜底; 真正内容在 voice-lines.json, init 时经 IPC 拉取覆盖
+let EMO_LINES = { zh: ['听命'], en: ['Orders received.'] };
 let _lastEmoIdx = -1;
 function pickEmoLine() {
-  if (EMO_LINES.length <= 1) return EMO_LINES[0];
+  const arr = EMO_LINES[_voiceLang] || EMO_LINES.zh;
+  if (arr.length <= 1) return arr[0];
   let idx;
-  do { idx = Math.floor(Math.random() * EMO_LINES.length); }
+  do { idx = Math.floor(Math.random() * arr.length); }
   while (idx === _lastEmoIdx);
   _lastEmoIdx = idx;
-  return EMO_LINES[idx];
+  return arr[idx];
 }
 // 形态循环 (点击): 仅在 Fighter (飞机) ↔ Gerwalk (半人形) 两态间切换, 不再经过 Battloid
 function nextFormAfterClick() {
@@ -1474,15 +1469,8 @@ function _tickManeuver(t, delta, sY, modelGroup, mode) {
 let userYaw = 0, userPitch = 0;
 // isRotating 已在更上面声明 (与 isDragging 同一行附近, hit-zone 检测要用)
 
-const greetings = [
-  'VF-1S 骷髅一号，起动完毕',
-  '联合宇宙军女武神就位，待命中',
-  '感应器正常，目标追踪中',
-  '命令已确认，随时出击',
-  'GU-11 机炮已装填，待命',
-  '为了地球，为了驾驶员',
-  '骷髅一号随时待命'
-];
+// 欢迎语 — 极简兜底; 真正内容在 voice-lines.json, init 时经 IPC 拉取覆盖
+let greetings = { zh: ['骷髅一号，起动完毕'], en: ['Skull One, standing by.'] };
 
 // ── Render Loop ───────────────────────────────────────────────────────
 const clock = new THREE.Clock();
@@ -1726,18 +1714,22 @@ function speakVF1(text, persist) {
   if (!text) return;
   try {
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'zh-CN';
     u.rate = 0.95;
     u.pitch = 1.0;
     u.volume = 1.0;
     const voices = window.speechSynthesis.getVoices();
-    const priority = ['Tingting', 'Yu-shu', 'Li-Mu', 'Sinji', 'Meijia'];
     let picked = null;
-    for (const p of priority) {
-      picked = voices.find(v => v.name === p);
-      if (picked) break;
+    if (_voiceLang === 'en') {
+      u.lang = 'en-US';
+      const priority = ['Daniel', 'Alex', 'Samantha', 'Karen', 'Moira', 'Tessa'];
+      for (const p of priority) { picked = voices.find(v => v.name === p); if (picked) break; }
+      if (!picked) picked = voices.find(v => /^en[-_]/i.test(v.lang) && !v.name.includes('('));
+    } else {
+      u.lang = 'zh-CN';
+      const priority = ['Tingting', 'Yu-shu', 'Li-Mu', 'Sinji', 'Meijia'];
+      for (const p of priority) { picked = voices.find(v => v.name === p); if (picked) break; }
+      if (!picked) picked = voices.find(v => /^zh-CN$/i.test(v.lang) && !v.name.includes('('));
     }
-    if (!picked) picked = voices.find(v => /^zh-CN$/i.test(v.lang) && !v.name.includes('('));
     if (picked) u.voice = picked;
     // 语音结束时通知 main 进程, 让休息提醒序列能"等语音念完"再变形回去
     u.onend = () => {
@@ -1760,6 +1752,16 @@ function speakVF1(text, persist) {
 
 async function init() {
   petState = await window.petAPI.getState();
+  _voiceLang = petState.voiceLang === 'en' ? 'en' : 'zh';
+  // 从 voice-lines.json (经主进程 IPC) 拉取全部台词, 覆盖上面的极简兜底
+  try {
+    const vl = await window.petAPI.getVoiceLines();
+    if (vl) {
+      if (vl.alert)     ALERT_LINES = vl.alert;
+      if (vl.emo)       EMO_LINES   = vl.emo;
+      if (vl.greetings) greetings   = vl.greetings;
+    }
+  } catch (e) { console.log('[VOICE] getVoiceLines failed', e); }
   updateVisuals(petState.pet);
 
   // 把可用 TTS voices 报给主进程, 方便看哪个最清晰
@@ -1774,8 +1776,8 @@ async function init() {
 
   // 开机问候: 随机选一句, 延迟 600ms 等 voices 加载完
   setTimeout(() => {
-    const greet = greetings[Math.floor(Math.random() * greetings.length)];
-    speakVF1(greet);
+    const garr = greetings[_voiceLang] || greetings.zh;
+    speakVF1(garr[Math.floor(Math.random() * garr.length)]);
   }, 600);
 
   // 读取警报音开关初始值 (store 默认 true)
@@ -1814,6 +1816,7 @@ async function init() {
 
   window.petAPI.onPetUpdate((data) => {
     petState = Object.assign(petState || {}, data);
+    if (data.voiceLang === 'zh' || data.voiceLang === 'en') _voiceLang = data.voiceLang;
     if (data.pet) updateVisuals(data.pet);
     if (data.pet && data.pet.mood === 'excited') showBubble('任务完成！骷髅一号升级 ⚡', 2000);
     if (data.reminderAlert) showBubble(data.reminderAlert, 6000);

@@ -17,7 +17,8 @@ const DEFAULT_STATE = {
   workflows: [],
   alertSoundEnabled: true,
   breakReminder: { enabled: true, intervalMin: 60 },
-  edgePatrol:    { enabled: true }
+  edgePatrol:    { enabled: true },
+  voiceLang:     'zh'            // 语音台词语言: 'zh' 中文 / 'en' 英文
 };
 
 function calcLevelFromXP(xp) {

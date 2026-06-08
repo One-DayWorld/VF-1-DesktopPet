@@ -43,6 +43,7 @@
       "pet.html",
       "preload.js",
       "store.js",
+      "voice-lines.json",
       "scripts/**/*",
       "assets/**/*",
       "node_modules/**/*",

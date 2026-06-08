@@ -259,15 +259,29 @@ const CLAUDE_PENDING_FLAG = path.join(RUN_DIR, 'vf1_claude_pending');
 // ── 任务完成语音播报 ──────────────────────────────────────────────────────
 const VF1_DONE_FLAG = path.join(RUN_DIR, 'vf1_task_done');
 
-// ── 休息提醒 ─────────────────────────────────────────────────────────────
-// 飞到屏幕中央 → 语音提示 → 4 秒后飞回原位
-const BREAK_MESSAGES = [
-  '已经持续作战一段时间了，请站起来活动下身体',
-  '建议起身走动两分钟，缓解疲劳',
-  '驾驶员保持健康才是联合宇宙军最大的战力，请离开座位休息一下',
-  '骷髅一号监测到驾驶员长时间未动，请起身做做拉伸',
-  '驾驶员辛苦了，离开屏幕休息几分钟吧',
-];
+// ── 语音台词 (中英双语; 全部集中在 voice-lines.json, 切换开关在 CONFIG) ──────
+function _voiceLang() { return state.voiceLang === 'en' ? 'en' : 'zh'; }
+
+// 从 voice-lines.json 读全部台词; 文件缺失/损坏时用极简兜底, 保证 App 不崩
+function loadVoiceLines() {
+  const FALLBACK = {
+    alert:     { zh: '发现不明物体', en: 'Unidentified contact detected' },
+    emo:       { zh: ['听命'], en: ['Orders received.'] },
+    greetings: { zh: ['骷髅一号，起动完毕'], en: ['Skull One, standing by.'] },
+    break:     { zh: ['请起身活动一下'], en: ['Please stand up and stretch.'] },
+    taskDone:  { zh: '任务已完成', en: 'Mission complete' },
+  };
+  try {
+    const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'voice-lines.json'), 'utf8'));
+    return Object.assign({}, FALLBACK, data);   // 缺的类目用兜底补齐
+  } catch (e) {
+    console.error('[VOICE] voice-lines.json 加载失败, 用内置兜底:', e.message);
+    return FALLBACK;
+  }
+}
+const VOICE = loadVoiceLines();
+function _voiceArr(cat) { return VOICE[cat][_voiceLang()] || VOICE[cat].zh; }
+function _voiceStr(cat) { return VOICE[cat][_voiceLang()] || VOICE[cat].zh; }
 let _lastBreakAt = Date.now();   // 上次提醒时间; app 启动后从现在开始计时
 let _breakInProgress = false;     // 防止动画期间重复触发
 let _speechEnded = false;         // 渲染进程通知"当前语音已念完"
@@ -310,7 +324,8 @@ async function runBreakAnimation() {
   const startX = startBounds.x;
   const startY = startBounds.y;
 
-  const msg = BREAK_MESSAGES[Math.floor(Math.random() * BREAK_MESSAGES.length)];
+  const _bm = _voiceArr('break');
+  const msg = _bm[Math.floor(Math.random() * _bm.length)];
   const send = (data) => {
     if (petWindow && !petWindow.isDestroyed()) petWindow.webContents.send('pet-update', data);
   };
@@ -580,8 +595,8 @@ async function checkTaskDoneFlag() {
   } else {
     msg = lines.join(' ');
   }
-  // 不管 flag 文件里是什么提示词, 任务完成播报统一固定为"任务已完成"
-  msg = '任务已完成';
+  // 不管 flag 文件里是什么提示词, 任务完成播报统一用固定台词 (随语言切换)
+  msg = _voiceStr('taskDone');
 
   // 记录任务完成对应的 terminal session, 让单击机体时能跳过去
   // 没拿到 tty 则不存 session — 不能 fallback 到"最前的 terminal", 容易误跳到别人
@@ -2737,6 +2752,22 @@ ipcMain.handle('set-edge-patrol', (_, cfg) => {
   // 关掉时下一轮 _canPatrolNow 直接返回 false; 开启时若当前空闲会自然进入巡航
   _patrolIndex = -1;
   return { success: true, edgePatrol: state.edgePatrol };
+});
+
+// 机体窗口取全部台词 (告警/点击/欢迎用), 来源同一个 voice-lines.json
+ipcMain.handle('get-voice-lines', () => VOICE);
+
+// 语音台词语言 (中/英)
+ipcMain.handle('get-voice-lang', () => state.voiceLang === 'en' ? 'en' : 'zh');
+
+ipcMain.handle('set-voice-lang', (_, lang) => {
+  state.voiceLang = lang === 'en' ? 'en' : 'zh';
+  store.save(state);
+  // 通知机体窗口立刻切换 (告警/点击/欢迎语台词与 TTS 嗓音随之改变)
+  if (petWindow && !petWindow.isDestroyed()) {
+    petWindow.webContents.send('pet-update', { voiceLang: state.voiceLang });
+  }
+  return { success: true, voiceLang: state.voiceLang };
 });
 
 // 复位: 让机体平滑飞回屏幕右下角的 home 位 (关闭巡航后归位用).

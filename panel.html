@@ -2145,6 +2145,19 @@
     </div>
 
     <div style="height:14px"></div>
+    <div class="setting-section">语音台词语言</div>
+    <div class="setting-row" style="margin-bottom:8px">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+        <label style="font-size:12px; color:var(--text-md);">语音播报 / 台词语言</label>
+        <select class="setting-input" id="voice-lang" style="width:auto; flex:0 0 auto;" onchange="saveVoiceLang()">
+          <option value="zh">中文</option>
+          <option value="en">English</option>
+        </select>
+      </div>
+      <div class="setting-note" style="margin-top:6px;">切换语言会同时改变告警/点击/欢迎/休息/任务完成的播报文案与 TTS 嗓音</div>
+    </div>
+
+    <div style="height:14px"></div>
     <div class="setting-section">提醒事项列表</div>
     <div class="setting-row" style="margin-bottom:8px">
       <div class="setting-label">读取的列表名称（留空则使用默认列表）</div>
@@ -2383,7 +2396,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     tab.classList.add('active');
     document.getElementById('pane-' + tab.dataset.tab).classList.add('active');
     if (tab.dataset.tab === 'todo' && reminders.length === 0) loadReminders();
-    if (tab.dataset.tab === 'settings') { initReminderLists(); loadBreakReminder(); loadEdgePatrol(); }
+    if (tab.dataset.tab === 'settings') { initReminderLists(); loadBreakReminder(); loadEdgePatrol(); loadVoiceLang(); }
     if (tab.dataset.tab === 'windows') loadWindows();
     if (tab.dataset.tab === 'terminal') { termActive = true; termPollNow(); }
     else termActive = false;
@@ -3378,6 +3391,22 @@ async function saveEdgePatrol() {
   try {
     await window.petAPI.setEdgePatrol({ enabled });
     showToast(enabled ? '✓ 已启用边沿巡航' : '已关闭边沿巡航');
+  } catch (e) { showToast('✗ 保存失败'); }
+}
+
+async function loadVoiceLang() {
+  try {
+    const lang = await window.petAPI.getVoiceLang();
+    const el = document.getElementById('voice-lang');
+    if (el) el.value = (lang === 'en') ? 'en' : 'zh';
+  } catch (e) { console.log('[VOICE] load failed', e); }
+}
+
+async function saveVoiceLang() {
+  const lang = document.getElementById('voice-lang').value === 'en' ? 'en' : 'zh';
+  try {
+    await window.petAPI.setVoiceLang(lang);
+    showToast(lang === 'en' ? '✓ Voice set to English' : '✓ 语音已设为中文');
   } catch (e) { showToast('✗ 保存失败'); }
 }
 

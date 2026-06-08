@@ -1,0 +1,65 @@
+{
+  "_note": "全部语音台词集中在此文件。改完保存后重启 App 生效。zh=中文 en=英文，CONFIG 里的语言开关决定用哪套。数组类(emo/greetings/break)为随机抽一句；alert/taskDone 为单句。",
+  "alert": {
+    "zh": "发现不明物体，请立即确认",
+    "en": "Unidentified contact detected. Confirm immediately."
+  },
+  "emo": {
+    "zh": [
+      "主人辛苦了",
+      "听命",
+      "准备就绪",
+      "骷髅一号待命中",
+      "请下达指令",
+      "收到，立即变形",
+      "骷髅中队，出击",
+      "为主人作战是我的使命",
+      "与驾驶员并肩作战"
+    ],
+    "en": [
+      "At your service, master.",
+      "Orders received.",
+      "Standing by, ready.",
+      "Skull One on standby.",
+      "Awaiting your command.",
+      "Roger. Transforming now.",
+      "Skull Squadron, launch!",
+      "Fighting for my master is my mission.",
+      "Fighting at your side, pilot."
+    ]
+  },
+  "greetings": {
+    "zh": [
+      "骷髅一号，起动完毕",
+      "感应器正常，目标追踪中",
+      "命令已确认，随时出击",
+      "机炮已装填，待命",
+      "骷髅一号随时待命"
+    ],
+    "en": [
+      "Skull One, startup complete.",
+      "Sensors nominal, tracking targets.",
+      "Orders confirmed, ready to launch.",
+      "Gun pod loaded and ready.",
+      "Skull One, standing by."
+    ]
+  },
+  "break": {
+    "zh": [
+      "已经持续作战一段时间了，请站起来活动下身体",
+      "建议起身走动两分钟，缓解疲劳",
+      "骷髅一号监测到主人长时间未动，请起身做做拉伸",
+      "主人辛苦了，离开屏幕休息几分钟吧"
+    ],
+    "en": [
+      "You've been in combat a while. Stand up and move around.",
+      "Recommend a two-minute walk to ease fatigue.",
+      "Skull One detects prolonged inactivity. Please stand and stretch.",
+      "Good work, master. Step away from the screen for a few minutes."
+    ]
+  },
+  "taskDone": {
+    "zh": "主人，任务已完成",
+    "en": "Master, mission complete"
+  }
+}
