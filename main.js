@@ -9,6 +9,7 @@ const execAsync = util.promisify(exec);
 // 路径/URL/应用名拼进命令行的地方都应优先用它.
 const execFileAsync = util.promisify(execFile);
 const store = require('./store');
+const Anthropic = require('@anthropic-ai/sdk');   // Anthropic 后台走官方 SDK (Messages API, 非 OpenAI 兼容)
 
 let petWindow = null;
 let panelWindow = null;
@@ -1023,18 +1024,22 @@ ipcMain.handle('move-pet', (_, x, y) => {
 });
 
 const PROVIDERS = {
-  qwen:     { name: '千问',     needsKey: true },
-  deepseek: { name: 'DeepSeek', needsKey: true },
-  doubao:   { name: '豆包',     needsKey: true },
-  ollama:   { name: 'Ollama',   needsKey: false }
+  qwen:      { name: '千问',      needsKey: true },
+  deepseek:  { name: 'DeepSeek',  needsKey: true },
+  openai:    { name: 'OpenAI',    needsKey: true },
+  anthropic: { name: 'Anthropic', needsKey: true }
 };
 
 const MODEL_DISPLAY = {
-  qwen:     '通义千问 Plus（阿里云）',
-  deepseek: 'DeepSeek Chat（DeepSeek）',
-  doubao:   '豆包 1.5 Pro 32K（火山引擎）',
-  ollama:   '本地 Ollama 模型'
+  qwen:      '通义千问 Plus（阿里云）',
+  deepseek:  'DeepSeek Chat（DeepSeek）',
+  openai:    'GPT-4o（OpenAI）',
+  anthropic: 'Claude Opus 4.8（Anthropic）'
 };
+
+// 各后台默认模型 (集中一处, 便于调整)
+const OPENAI_MODEL    = 'gpt-4o';
+const ANTHROPIC_MODEL = 'claude-opus-4-8';
 
 function extractMoodFromText(text) {
   const matches = [...text.matchAll(/[（(]([^）)]+)[）)]/g)].map(m => m[1]).join('');
@@ -1777,6 +1782,53 @@ end run`;
   return '未知工具';
 }
 
+// Anthropic Messages API 分支 — 用官方 @anthropic-ai/sdk (与其它 OpenAI 兼容 provider 的裸 fetch 通道分开).
+// Anthropic 接口: system 是顶层参数、工具用 input_schema 格式 (复用 CLAUDE_TOOLS)、响应是 content block 数组、
+// 工具循环靠 stop_reason==='tool_use' + tool_result 回灌. 不传 temperature (opus-4-8 已移除该参数会 400).
+async function callAnthropic({ apiKey, model, systemPrompt, recentHistory, userMessage, useTools, forceTool, metasoKey }) {
+  const client = new Anthropic({ apiKey, timeout: 90000, maxRetries: 1 });
+  // Anthropic 要求首条消息为 user, 故剔除历史里开头的 assistant 前缀
+  const msgs = recentHistory
+    .map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content ?? '') }))
+    .filter(m => m.content.length > 0);
+  while (msgs.length && msgs[0].role === 'assistant') msgs.shift();
+  msgs.push({ role: 'user', content: userMessage });
+
+  const MAX_TOOL_ROUNDS = 6;
+  let rounds = 0, firstCall = true, finalText = '';
+  while (true) {
+    if (++rounds > MAX_TOOL_ROUNDS) {
+      console.warn('[AI] Anthropic 工具调用超过', MAX_TOOL_ROUNDS, '轮, 强制结束');
+      return finalText || '（处理超时：工具调用轮数过多，请换个问法重试）';
+    }
+    const req = { model, max_tokens: 4096, system: systemPrompt, messages: msgs };
+    if (useTools) {
+      req.tools = CLAUDE_TOOLS;
+      if (forceTool && firstCall) req.tool_choice = { type: 'tool', name: forceTool };
+    }
+    firstCall = false;
+
+    const resp = await client.messages.create(req);
+    const text = (resp.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+    if (text) finalText = text;
+
+    if (resp.stop_reason === 'tool_use') {
+      msgs.push({ role: 'assistant', content: resp.content });
+      const toolResults = [];
+      for (const block of resp.content) {
+        if (block.type !== 'tool_use') continue;
+        let result;
+        try { result = await runTool(block.name, block.input || {}, { metasoKey }); }
+        catch (e) { result = `工具执行失败: ${e.message}`; }
+        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: String(result ?? '') });
+      }
+      msgs.push({ role: 'user', content: toolResults });
+      continue;
+    }
+    return finalText;
+  }
+}
+
 async function callAI(provider, apiKey, petName, history, userMessage, metasoKey = '', opts = {}) {
   const { systemOverride = null, noTools = false, temperature = null, forceTool = null } = opts;
   const now = new Date();
@@ -1827,19 +1879,24 @@ async function callAI(provider, apiKey, petName, history, userMessage, metasoKey
 - 只回答用户实际问的问题，不要主动补充无关信息`;
   const systemPrompt = systemOverride || defaultSystemPrompt;
   const recentHistory = history.slice(-10).map(m => ({ role: m.role, content: m.content }));
+  const useTools = !noTools;
 
-  // 全部 provider 走 OpenAI-compatible 通道 (千问/豆包均提供兼容接口, 不再需要 Anthropic SDK 分支)
+  // Anthropic 非 OpenAI 兼容, 走官方 SDK 单独分支
+  if (provider === 'anthropic') {
+    return await callAnthropic({ apiKey, model: ANTHROPIC_MODEL, systemPrompt, recentHistory, userMessage, useTools, forceTool, metasoKey });
+  }
+
+  // 其余 (千问 / DeepSeek / OpenAI) 走 OpenAI 兼容通道
   const endpoints = {
     qwen:     { url: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', model: 'qwen-plus' },
     deepseek: { url: 'https://api.deepseek.com/chat/completions',                          model: 'deepseek-chat' },
-    doubao:   { url: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',          model: 'doubao-1-5-pro-32k' },
-    ollama:   { url: 'http://localhost:11434/v1/chat/completions',                         model: 'llama3' }
+    openai:   { url: 'https://api.openai.com/v1/chat/completions',                         model: OPENAI_MODEL }
   };
   const ep = endpoints[provider];
+  if (!ep) throw new Error('未知的 AI 后台，请在设置中重新选择');
   const headers = { 'Content-Type': 'application/json' };
   if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
 
-  const useTools = !noTools && provider !== 'ollama';
   let chatMessages = [
     { role: 'system', content: systemPrompt },
     ...recentHistory,

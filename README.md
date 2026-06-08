@@ -23,7 +23,7 @@
 - 🤖 **Claude Code radar** — the VF-1 watches your terminal. When Claude Code is waiting on a permission prompt, it flashes gold, pulses a target-lock HUD, and calls out over TTS. When your agent finishes, it announces *"mission complete."* No more babysitting a terminal in another window.
 - 🛸 **A real transformable mecha, not a sprite** — full **Fighter ↔ Gerwalk ↔ Battloid** morphing rendered live in Three.js. It cruises the edges of your screen, banks into turns, barrel-rolls, and hovers on glowing thrusters.
 - 🎛️ **A cockpit, not a tooltip** — click the model and a HUD-styled control panel slides out: LLM chat, market data, macOS Reminders, terminal session monitor, window switcher, and reusable AI workflows.
-- 🧠 **Bring your own brain** — the pet is just the body. Plug in **Qwen, DeepSeek, Doubao, or local Ollama** as the intelligence, plus optional live web search.
+- 🧠 **Bring your own brain** — the pet is just the body. Plug in **Qwen, DeepSeek, OpenAI, or Anthropic** as the intelligence, plus optional live web search.
 - 🔒 **100% local** — no telemetry, no cloud sync. Keys and state live in a `0600` file in your home directory.
 
 > The pet itself is not the AI — it's a **frontend container**. The intelligence comes from whichever LLM you bind in `CONFIG`.
@@ -143,8 +143,8 @@ Four backends behind one OpenAI-compatible interface — configure under `CONFIG
 |---|---|---|---|
 | **Qwen** (千问) | `qwen-plus` | DashScope (Alibaba Cloud) | [dashscope.console.aliyun.com](https://dashscope.console.aliyun.com) |
 | **DeepSeek** | `deepseek-chat` | api.deepseek.com | [platform.deepseek.com](https://platform.deepseek.com) |
-| **Doubao** (豆包) | `doubao-1-5-pro-32k` | Volcengine Ark | [console.volcengine.com/ark](https://console.volcengine.com/ark) |
-| **Ollama** | `llama3` (local) | localhost:11434 | none — runs locally |
+| **OpenAI** | `gpt-4o` | api.openai.com | [platform.openai.com](https://platform.openai.com/api-keys) |
+| **Anthropic** | `claude-opus-4-8` | api.anthropic.com | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
 
 > Optional: add a [Metaso](https://metaso.cn) key under `CONFIG → 网页搜索` to let the AI search the live web for scores, news, and prices.
 
@@ -157,7 +157,7 @@ Electron main process (`main.js`) drives two `BrowserWindow`s — a transparent 
 ```
 main.js ── IPC ──┬── pet.html      (Three.js VF-1: GLB loader, morph, patrol, maneuvers)
    │             └── panel.html    (HUD 7-tab UI: chat, mission, config, live polling)
-   ├── LLM clients (Qwen / DeepSeek / Doubao / Ollama)
+   ├── LLM clients (Qwen / DeepSeek / OpenAI / Anthropic)
    ├── Edge-patrol loop + break reminders
    ├── Claude Code flag-file watchers + hook auto-installer
    └── AppleScript bridges (Reminders, terminal focus, window manager)

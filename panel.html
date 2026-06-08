@@ -1972,7 +1972,7 @@
       <button class="qp-btn" data-url="https://chatgpt.com">✨ ChatGPT</button>
       <button class="qp-btn" data-url="https://chat.deepseek.com">🌊 DeepSeek</button>
       <button class="qp-btn" data-url="https://chat.qwen.ai">🦅 千问</button>
-      <button class="qp-btn" data-url="https://www.doubao.com/chat">🫘 豆包</button>
+      <button class="qp-btn" data-url="https://claude.ai">🧠 Claude</button>
       <button class="qp-btn" data-url="https://nextgen-beta.ica.ibm.com/ica/chat">🔷 ICA</button>
       <div class="qp-section-title">体育</div>
       <button class="qp-btn" data-prompt="昨晚 CBA 总决赛比分和球员数据">🏀 CBA 战报</button>
@@ -2172,15 +2172,15 @@
         <div class="p-name">DeepSeek</div>
         <div class="p-model">deepseek-chat</div>
       </div>
-      <div class="provider-card" data-provider="doubao" onclick="selectProvider('doubao')">
-        <div class="p-icon">🫘</div>
-        <div class="p-name">豆包</div>
-        <div class="p-model">doubao-1.5-pro-32k</div>
+      <div class="provider-card" data-provider="openai" onclick="selectProvider('openai')">
+        <div class="p-icon">🤖</div>
+        <div class="p-name">OpenAI</div>
+        <div class="p-model">gpt-4o</div>
       </div>
-      <div class="provider-card" data-provider="ollama" onclick="selectProvider('ollama')">
-        <div class="p-icon">🦙</div>
-        <div class="p-name">Ollama</div>
-        <div class="p-model">本地模型</div>
+      <div class="provider-card" data-provider="anthropic" onclick="selectProvider('anthropic')">
+        <div class="p-icon">🧠</div>
+        <div class="p-name">Anthropic</div>
+        <div class="p-model">claude-opus-4-8</div>
       </div>
     </div>
 
@@ -2205,17 +2205,21 @@
     </div>
 
     <div class="key-section">
-      <div class="setting-label" style="margin-bottom:0">🫘 豆包 (火山引擎 Ark)</div>
+      <div class="setting-label" style="margin-bottom:0">🤖 OpenAI</div>
       <div class="key-row">
-        <input class="setting-input" id="key-doubao" type="password" placeholder="ARK_API_KEY..." />
-        <button class="key-save-btn" onclick="saveKey('doubao')">保存</button>
+        <input class="setting-input" id="key-openai" type="password" placeholder="sk-..." />
+        <button class="key-save-btn" onclick="saveKey('openai')">保存</button>
       </div>
-      <div class="key-status" id="status-doubao"></div>
+      <div class="key-status" id="status-openai"></div>
     </div>
 
     <div class="key-section">
-      <div class="setting-label" style="margin-bottom:0">🦙 Ollama（无需 Key）</div>
-      <div class="key-status unset" style="margin-top:4px">确保本地已运行 ollama serve，默认连接 localhost:11434</div>
+      <div class="setting-label" style="margin-bottom:0">🧠 Anthropic (Claude)</div>
+      <div class="key-row">
+        <input class="setting-input" id="key-anthropic" type="password" placeholder="sk-ant-..." />
+        <button class="key-save-btn" onclick="saveKey('anthropic')">保存</button>
+      </div>
+      <div class="key-status" id="status-anthropic"></div>
     </div>
 
     <div style="height:14px"></div>
@@ -3424,7 +3428,7 @@ async function selectProvider(provider) {
 }
 
 function providerLabel(p) {
-  return { qwen: '千问', deepseek: 'DeepSeek', doubao: '豆包', ollama: 'Ollama (本地)' }[p] || p;
+  return { qwen: '千问', deepseek: 'DeepSeek', openai: 'OpenAI', anthropic: 'Anthropic' }[p] || p;
 }
 
 function renderProviderCards(active) {
@@ -3465,7 +3469,7 @@ function initSettings() {
   renderProviderCards(provider);
   setAvatarContent(document.getElementById('pet-mini-avatar'), currentAvatar);
   setAvatarContent(document.getElementById('avatar-preview-lg'), currentAvatar);
-  ['qwen', 'deepseek', 'doubao', 'metaso'].forEach(p => {
+  ['qwen', 'deepseek', 'openai', 'anthropic', 'metaso'].forEach(p => {
     const hasKey = !!(apiKeys[p]);
     const input = document.getElementById('key-' + p);
     if (input && hasKey) { input.value = '•'.repeat(20); input.classList.add('has-key'); }

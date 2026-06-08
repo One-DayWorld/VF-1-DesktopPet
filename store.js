@@ -11,7 +11,7 @@ const DEFAULT_STATE = {
   pet: { name: '骷髅一号', level: 1, xp: 0, mood: 'happy', avatar: '🐕' },
   chatHistory: [],
   aiProvider: 'qwen',
-  apiKeys: { qwen: '', deepseek: '', doubao: '', ollama: '', metaso: '' },
+  apiKeys: { qwen: '', deepseek: '', openai: '', anthropic: '', metaso: '' },
   petPosition: { x: 100, y: 100 },
   reminderList: '',
   workflows: [],
@@ -48,13 +48,12 @@ function load() {
       delete merged.apiKey;
     }
     merged.apiKeys = Object.assign({}, DEFAULT_STATE.apiKeys, merged.apiKeys);
-    // 旧版 provider claude/openai 改名为 qwen/doubao — 字段直接搬, key 不能复用 (sk-ant 在 DashScope 上不通)
-    // 所以只迁移 provider 选择, 不迁移 apiKey, 用户重填即可
-    if (merged.aiProvider === 'claude') merged.aiProvider = 'qwen';
-    if (merged.aiProvider === 'openai') merged.aiProvider = 'doubao';
-    // 清理已经无效的旧 key 字段, 不让它们一直挂在 data.json 里
-    if (merged.apiKeys.claude !== undefined) delete merged.apiKeys.claude;
-    if (merged.apiKeys.openai !== undefined) delete merged.apiKeys.openai;
+    // provider 集合迁移: 下线 doubao/ollama, 改用 openai/anthropic
+    // 清理已下线后台的残留 key 字段 (claude 为更早的旧命名)
+    ['doubao', 'ollama', 'claude'].forEach(k => { if (merged.apiKeys[k] !== undefined) delete merged.apiKeys[k]; });
+    // 选中的后台若已不在有效集合内, 回退到 qwen
+    const VALID_PROVIDERS = ['qwen', 'deepseek', 'openai', 'anthropic'];
+    if (!VALID_PROVIDERS.includes(merged.aiProvider)) merged.aiProvider = 'qwen';
     // deep merge pet to fill any missing fields
     merged.pet = Object.assign({}, DEFAULT_STATE.pet, merged.pet);
     // deep merge breakReminder for older data files that don't have this field
