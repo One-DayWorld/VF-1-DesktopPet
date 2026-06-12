@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:100%; height:100%; overflow:hidden; background:#7c8694; }
+  #c { display:block; width:100%; height:100%; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script type="module">
+// 离屏渲染 Battloid 静态姿态, 相机/灯光/俯仰严格对齐 pet.html, 用来挑休息提醒的中央角度
+import * as THREE from '../node_modules/three/build/three.module.js';
+import { GLTFLoader } from '../assets/GLTFLoader.js';
+
+const W = 280, H = 404;   // 比例 ≈ 180/260, 和真实机体窗口一致
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+renderer.setSize(W, H); renderer.setPixelRatio(1);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, W / H, 0.01, 1000);
+scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+const key  = new THREE.DirectionalLight(0xFFEECC, 2.2); key.position.set(3, 6, 5);  scene.add(key);
+const rim  = new THREE.DirectionalLight(0x334466, 0.8); rim.position.set(-4, 2, -3); scene.add(rim);
+const fill = new THREE.DirectionalLight(0xCCDDFF, 0.5); fill.position.set(0, -3, 4); scene.add(fill);
+
+let modelGroup = null, model = null, mixer = null, morphAction = null, sizeY = 1;
+const ready = new Promise((res, rej) => {
+  new GLTFLoader().load('../assets/vf-1-strike/vf1.glb', (gltf) => {
+    model = gltf.scene;
+    const box = new THREE.Box3().setFromObject(model);
+    const size = new THREE.Vector3(), center = new THREE.Vector3();
+    box.getSize(size); box.getCenter(center); model.position.sub(center); sizeY = size.y;
+    const aspect = W / H, halfFovTan = Math.tan((camera.fov * Math.PI / 180) / 2);
+    const distH = (size.y / 2) / halfFovTan, distW = (size.x / 2) / (halfFovTan * aspect);
+    const dist = Math.max(distH, distW) * 1.2;
+    camera.position.set(0, 0, dist); camera.lookAt(0, 0, 0);
+    camera.near = dist * 0.01; camera.far = dist * 10; camera.updateProjectionMatrix();
+    model.rotation.x = -0.08;   // pet.html 内层基础俯仰
+    modelGroup = new THREE.Group(); modelGroup.add(model); scene.add(modelGroup);
+    if (gltf.animations && gltf.animations.length) {
+      mixer = new THREE.AnimationMixer(model);
+      const a = {}; gltf.animations.forEach(c => a[c.name] = mixer.clipAction(c));
+      morphAction = a['__ActionLegGERWALKgunner'] || Object.values(a)[0];
+      if (morphAction) {
+        morphAction.setLoop(THREE.LoopOnce); morphAction.clampWhenFinished = true;
+        morphAction.play(); morphAction.paused = true;
+        morphAction.time = morphAction.getClip().duration * 1.0;  // Battloid 完全态
+        mixer.update(0);
+      }
+    }
+    res(true);
+  }, undefined, (e) => rej(e));
+});
+window.__ready = ready;
+
+// yawDeg: 相对正对镜头的偏转(度); pitch: modelGroup.rotation.x (前倾正/后仰负)
+window.__pose = (yawDeg, pitch) => {
+  if (!modelGroup) return;
+  model.rotation.y = Math.PI + yawDeg * Math.PI / 180;
+  modelGroup.rotation.x = pitch;
+  modelGroup.rotation.y = 0; modelGroup.rotation.z = 0;
+  modelGroup.position.y = -(sizeY * 0.10);   // pet.html 的 baseDown (Battloid morphComp=0)
+  renderer.render(scene, camera);
+};
+</script>
+</body>
+</html>

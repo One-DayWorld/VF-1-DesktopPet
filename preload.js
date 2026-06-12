@@ -55,6 +55,9 @@ contextBridge.exposeInMainWorld('petAPI', {
   triggerBreakReminder: () => ipcRenderer.invoke('trigger-break-reminder'),
   getEdgePatrol: () => ipcRenderer.invoke('get-edge-patrol'),
   setEdgePatrol: (cfg) => ipcRenderer.invoke('set-edge-patrol', cfg),
+  getPetVisible: () => ipcRenderer.invoke('get-pet-visible'),
+  togglePetVisible: () => ipcRenderer.invoke('toggle-pet-visible'),
+  getLite: () => ipcRenderer.invoke('get-lite'),
   getVoiceLines: () => ipcRenderer.invoke('get-voice-lines'),
   getVoiceLang: () => ipcRenderer.invoke('get-voice-lang'),
   setVoiceLang: (lang) => ipcRenderer.invoke('set-voice-lang', lang),
@@ -63,6 +66,4 @@ contextBridge.exposeInMainWorld('petAPI', {
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   notifySpeechEnd: () => ipcRenderer.invoke('notify-speech-end'),
 
-  listWindows: () => ipcRenderer.invoke('list-windows'),
-  activateWindow: (app, name) => ipcRenderer.invoke('activate-window', app, name),
 });

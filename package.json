@@ -6,7 +6,8 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --mac --arm64 --x64"
+    "build": "electron-builder --mac --arm64 --x64",
+    "build:lite": "electron-builder --mac --arm64 --x64 -c.extraMetadata.vf1Lite=true -c.productName=\"VF-1 Lite\" -c.appId=com.ace.vf1desktoppetlite -c.dmg.title=\"VF-1 Lite\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

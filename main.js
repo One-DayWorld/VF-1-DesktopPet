@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, shell, session: electronSession, systemPreferences, net, powerMonitor } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, shell, session: electronSession, systemPreferences, net, powerMonitor, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -15,6 +15,10 @@ let petWindow = null;
 let panelWindow = null;
 let state = store.load();
 const notifiedReminders = new Set();
+
+// 精简版标志: 构建时由 electron-builder 的 extraMetadata.vf1Lite 注入 package.json;
+// 开发运行 (npm start) 时该字段不存在 → 完整版.
+const LITE = (() => { try { return !!require('./package.json').vf1Lite; } catch (_) { return false; } })();
 
 // ── Claude Code Hooks 自动安装 ──────────────────────────────────────────────
 // 让 VF-1 在任何 Mac 上首次启动时自动配置 ~/.claude/settings.json,
@@ -289,6 +293,7 @@ let _systemJustResumed = false;   // 唤醒后的保护标志 — 防止 setInte
 
 async function checkBreakReminder() {
   if (_breakInProgress) return;
+  if (petWindow && !petWindow.isDestroyed() && !petWindow.isVisible()) return;  // 隐藏期间不打扰
   // 系统刚唤醒: setInterval 可能比 powerMonitor.resume 先跑.
   // 此时 _lastBreakAt 还是睡眠前的时间, 差值可能是几小时, 会误触发.
   // 检测到 _systemJustResumed 就重置计时基准并跳过本次检查.
@@ -343,39 +348,53 @@ async function runBreakAnimation() {
   const yawFlyOut  = dxOut > 0 ? 'right' : 'left';   // 飞向中央时机头朝飞行方向
   const yawFlyBack = dxOut > 0 ? 'left'  : 'right';  // 飞回时反向
 
-  // 1. 原位: 调机头朝飞行方向 + 变形成 Fighter
-  send({ bodyYaw: yawFlyOut, transformTo: 'fighter' });
+  // 1. 原位: 调机头朝飞行方向 + 变形成 Fighter + 进入醒目模式(让俯仰过渡藏在这次变形里)
+  send({ bodyYaw: yawFlyOut, transformTo: 'fighter', breakMode: true });
   await sleep(PARTIAL_MORPH_MS);
 
   // 2. 飞向屏幕中央 (0.8s)
-  send({ breakMode: true });
   await tweenWindow(startX, startY, targetX, targetY, 800);
 
-  // 3. 中央: 切到慢速度 + 正对镜头 + 同时开始变形 Battloid 和语音播报
+  // 3. 中央: 切到慢速度 + 斜 45° (3/4 视角, 避免正面俯身难看) + 同时开始变形 Battloid 和语音播报
   _speechEnded = false;
-  send({ morphSpeed: DRAMATIC_SPEED, bodyYaw: 'face', transformTo: 'battloid', speakText: msg });
+  send({ morphSpeed: DRAMATIC_SPEED, bodyYaw: 'break-center', transformTo: 'battloid', speakText: msg });
 
-  // 4. 等变形完成 → 然后开火 → 等语音完成 → 关火
+  // 4. 变形完成 → 放大成"全屏弹幕舞台"(机体居中, 整窗鼠标穿透) → 发射飞弹 → 等语音/保底 → 停火 → 收回
   await sleep(DRAMATIC_MORPH_MS);
-  send({ firing: true });   // Battloid 完成站位, 开始双枪开火
+  send({ fireArena: true });            // 渲染层先把机体固定居中
+  await sleep(60);                      // 等居中生效再放大窗口, 避免闪一下
+  petWindow.setIgnoreMouseEvents(true); // 全屏期间整窗鼠标穿透, 不挡用户操作
+  petWindow.setBounds({ x: sx, y: sy, width: sw, height: sh });
+
+  send({ firing: true });   // 开始发射飞弹齐射 (飞满全屏)
   const SPEECH_MAX_WAIT_MS = 12000;
+  const FIRE_MIN_MS = 2600;  // 保底开火时长 — 防止语音结束信号(cancel 的杂散回调)提前掐断飞弹
   const t0 = Date.now();
-  while (!_speechEnded && (Date.now() - t0) < SPEECH_MAX_WAIT_MS) {
+  while (Date.now() - t0 < SPEECH_MAX_WAIT_MS) {
+    if (_speechEnded && (Date.now() - t0) >= FIRE_MIN_MS) break;
     await sleep(150);
   }
-  send({ firing: false });  // 语音完了, 停火
+  send({ firing: false });  // 语音完且已打满保底时长, 停火
 
-  // 5. 中央: Battloid → Fighter, 同时机头转向飞回方向 + 退出醒目模式 (仍用慢速)
-  send({ transformTo: 'fighter', bodyYaw: yawFlyBack, breakMode: false });
+  // 收回全屏舞台: 窗口回到居中 180×290, 恢复鼠标命中
+  petWindow.setBounds({ x: targetX, y: targetY, width: PW, height: PH });
+  petWindow.setIgnoreMouseEvents(false);
+  send({ fireArena: false });
+
+  // 5. 中央: Battloid → Fighter (仍用慢速; breakMode 保持开, 俯仰恒定不在中央突变)
+  //    注意: 不在此处转机头 — 否则人形会原地"斜向侧转正", 难看. 转向放到飞回时(被位移掩盖).
+  send({ transformTo: 'fighter' });
   await sleep(DRAMATIC_MORPH_MS);
 
-  // 6. 飞回原位 (0.8s)
+  // 6. 飞回原位 (0.8s) — 起飞瞬间才把机头转向飞回方向, 转向被平移掩盖
+  send({ bodyYaw: yawFlyBack });
   await tweenWindow(targetX, targetY, startX, startY, 800);
   state.petPosition = { x: startX, y: startY };
   store.save(state);
 
-  // 7. 原位: 切回正常速度 + Fighter → Gerwalk + 机头回到待命角
-  send({ morphSpeed: NORMAL_SPEED, transformTo: 'gerwalk', bodyYaw: 'left' });
+  // 7. 原位: 切回正常速度 + Fighter → Gerwalk + 机头回到待命角 + 退出醒目模式
+  //    (俯仰 -0.06 → 待机 0.32 的过渡藏在这次 Fighter→Gerwalk 变形里, 不显眼)
+  send({ morphSpeed: NORMAL_SPEED, transformTo: 'gerwalk', bodyYaw: 'left', breakMode: false });
   await sleep(PARTIAL_MORPH_MS);
 }
 
@@ -431,6 +450,7 @@ function _canPatrolNow() {
   if (_taskDoneSession) return false;
   if (Date.now() - _lastUserMoveAt < PATROL_USER_GRACE_MS) return false;
   if (!petWindow || petWindow.isDestroyed()) return false;
+  if (!petWindow.isVisible()) return false;   // 隐藏期间不巡航, 显示后停在原位
   return true;
 }
 
@@ -757,6 +777,33 @@ async function checkClaudePendingFlag() {
   }
 }
 
+// 隐藏 / 显示机体窗口 (快捷键 ⌘⌥H 与 CONFIG 按钮共用). 隐藏期间巡航/休息提醒暂停, 不乱跑.
+let _hiddenAtPos = null;
+function togglePetVisible(force) {
+  if (!petWindow || petWindow.isDestroyed()) return false;
+  const show = (typeof force === 'boolean') ? force : !petWindow.isVisible();
+  if (show) {
+    petWindow.showInactive();   // 显示但不抢焦点
+    // macOS 在 show 时会把"部分越出屏幕"的窗口(如右下角 home 位故意压低)约束回可见区, 导致跳位;
+    // 用隐藏前记下的精确坐标强制还原, 并补一帧覆盖异步约束.
+    if (_hiddenAtPos) {
+      const p = _hiddenAtPos; _hiddenAtPos = null;
+      petWindow.setPosition(p.x, p.y);
+      setTimeout(() => { if (petWindow && !petWindow.isDestroyed()) petWindow.setPosition(p.x, p.y); }, 30);
+    }
+    if (petWindow.webContents) petWindow.webContents.send('pet-update', { petSay: '骷髅一号归队' });
+  } else {
+    const b = petWindow.getBounds();
+    _hiddenAtPos = { x: b.x, y: b.y };   // 记下隐藏前的精确位置
+    petWindow.hide();
+  }
+  // 通知面板同步按钮文案
+  if (panelWindow && !panelWindow.isDestroyed()) {
+    panelWindow.webContents.send('pet-update', { petVisible: show });
+  }
+  return show;
+}
+
 app.whenReady().then(() => {
   // 自动安装 Claude Code hooks (首次启动 / app 被搬到新位置 / 脚本更新都会刷新)
   ensureClaudeHooksInstalled();
@@ -779,6 +826,12 @@ app.whenReady().then(() => {
 
   // 边沿巡航: 待机时沿屏幕四角顺时针缓慢飞行 (开关在 CONFIG → 机体设置)
   startEdgePatrolLoop().catch(e => console.error('[PATROL] loop crashed:', e));
+
+  // 全局快捷键 ⌘⌥H: 隐藏 / 显示机体 (机体挡住要点的区域时, 按一下藏起来, 用完再按显示)
+  try {
+    globalShortcut.register('CommandOrControl+Alt+H', () => togglePetVisible());
+  } catch (e) { console.error('[HOTKEY] 注册失败:', e.message); }
+  app.on('will-quit', () => { try { globalShortcut.unregisterAll(); } catch (_) {} });
 
   // 合盖/休眠期间不算入休息计时, 否则一晚上 8h 累积下来开盖会连珠播报
   // suspend(系统进入睡眠): 设置保护标志, 唤醒后第一次 checkBreakReminder 会跳过
@@ -864,81 +917,6 @@ end tell`;
 // ── IPC Handlers ─────────────────────────────────────────
 
 ipcMain.handle('notify-speech-end', () => { _speechEnded = true; });
-
-// 列出当前所有 GUI 应用 + 它们的窗口 (用 System Events, 需要辅助功能权限)
-ipcMain.handle('list-windows', async () => {
-  const tmpScript = path.join(os.tmpdir(), `list_wins_${Date.now()}.js`);
-  const script = `
-    function listAll() {
-      const SE = Application('System Events');
-      const result = [];
-      try {
-        // 取所有 GUI 进程 (排除守护进程). visible 过滤会漏掉 Finder 等常驻应用
-        const procs = SE.applicationProcesses();
-        for (let i = 0; i < procs.length; i++) {
-          try {
-            const p = procs[i];
-            // 跳过 background-only 守护进程
-            try { if (p.backgroundOnly()) continue; } catch (e) {}
-            const appName = p.name();
-            // 跳过本应用自己 (Electron / Helper 进程)
-            if (/^Electron/i.test(appName) || appName === 'DesktopPet') continue;
-            const wins = p.windows();
-            const winList = [];
-            for (let j = 0; j < wins.length; j++) {
-              try {
-                const w = wins[j];
-                const wname = w.name();
-                if (wname && wname.length > 0) winList.push({ index: j + 1, name: wname });
-              } catch (e) {}
-            }
-            if (winList.length > 0) {
-              result.push({ app: appName, windows: winList });
-            }
-          } catch (e) {}
-        }
-      } catch (e) {
-        return JSON.stringify({ error: e.message });
-      }
-      result.sort((a, b) => b.windows.length - a.windows.length);
-      return JSON.stringify(result);
-    }
-    listAll();
-  `;
-  try {
-    fs.writeFileSync(tmpScript, script);
-    const { stdout } = await execAsync(`osascript -l JavaScript "${tmpScript}"`, { timeout: 5000 });
-    try { fs.unlinkSync(tmpScript); } catch (_) {}
-    const trimmed = (stdout || '').trim();
-    return trimmed ? JSON.parse(trimmed) : [];
-  } catch (e) {
-    try { fs.unlinkSync(tmpScript); } catch (_) {}
-    return { error: e.message };
-  }
-});
-
-// 激活指定 app 的指定窗口到前台
-ipcMain.handle('activate-window', async (_, appName, windowName) => {
-  const safeApp = String(appName || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-  const safeWin = String(windowName || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-  const script = `tell application "${safeApp}" to activate
-delay 0.05
-tell application "System Events"
-  tell process "${safeApp}"
-    try
-      set frontmost to true
-      set targetWin to first window whose name is "${safeWin}"
-      perform action "AXRaise" of targetWin
-    end try
-  end tell
-end tell`;
-  try {
-    await runAppleScript(script);
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
-});
 
 ipcMain.handle('report-voices', (_, voices) => {
   console.log('[VOICES REPORT]');
@@ -2754,8 +2732,15 @@ ipcMain.handle('set-edge-patrol', (_, cfg) => {
   return { success: true, edgePatrol: state.edgePatrol };
 });
 
+// 精简版标志 (panel 据此隐藏 CHAT/WORKFLOW/WINDOWS + AI BACKEND)
+ipcMain.handle('get-lite', () => LITE);
+
 // 机体窗口取全部台词 (告警/点击/欢迎用), 来源同一个 voice-lines.json
 ipcMain.handle('get-voice-lines', () => VOICE);
+
+// 隐藏 / 显示机体
+ipcMain.handle('get-pet-visible', () => !!(petWindow && !petWindow.isDestroyed() && petWindow.isVisible()));
+ipcMain.handle('toggle-pet-visible', () => ({ visible: togglePetVisible() }));
 
 // 语音台词语言 (中/英)
 ipcMain.handle('get-voice-lang', () => state.voiceLang === 'en' ? 'en' : 'zh');
@@ -2827,6 +2812,7 @@ ipcMain.handle('set-term-alert', (_, active, session) => {
 ipcMain.handle('focus-terminal-alert', async () => {
   // 优先 termAlert (权限等待) — 那是更紧急的状态
   // 其次 taskDone (任务完成) — 用一次就清掉, 避免后续点击重复跳
+  const wasTermAlert = _termAlertActive;   // 点击时正处于"待授权告警", 跳转后要立即解除
   let s = _termAlertSession;
   let consumedTaskDone = false;
   if (!s && _taskDoneSession) {
@@ -2875,6 +2861,16 @@ end tell`;
       if (petWindow && !petWindow.isDestroyed()) {
         petWindow.webContents.send('pet-update', { taskDoneAvailable: false });
       }
+    }
+    // 点击并跳转到终端 = 用户已去确认; 立即解除待授权告警 (删 pending flag + 复位状态 + 广播),
+    // 不再等真正的确认动作, 也避免 800ms 轮询把告警重新点亮
+    if (wasTermAlert) {
+      try { if (fs.existsSync(CLAUDE_PENDING_FLAG)) fs.unlinkSync(CLAUDE_PENDING_FLAG); } catch (_) {}
+      _termAlertActive = false;
+      _claudeFlagActive = false;
+      _termAlertSession = null;
+      if (petWindow   && !petWindow.isDestroyed())   petWindow.webContents.send('pet-update', { termAlert: false });
+      if (panelWindow && !panelWindow.isDestroyed()) panelWindow.webContents.send('pet-update', { termAlert: false });
     }
     return { ok: true };
   } catch (e) {
